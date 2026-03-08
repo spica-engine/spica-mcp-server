@@ -93,14 +93,15 @@ export function registerDevelopmentTools(server, client) {
         "Environment variable and secret management:\n" +
         "- env_vars: array of { _id?, key, value } objects. Items without _id are created as new env vars and injected. " +
         "Items with _id are updated. Env vars not present in the array are ejected from the function.\n" +
-        "- secrets: array of env var IDs to inject as secrets. Secrets not present are ejected.",
+        "- secrets: array of { _id?, key, value } objects. Items without _id are created as new secrets and injected. " +
+        "Items with _id are updated. Secrets not present in the array are ejected from the function.\n",
       inputSchema: z.object({
         _id: z.string().optional().describe("Function ID. Omit to create."),
         name: z.string().describe("Function name"),
         description: z.string().optional().describe("Description"),
         triggers: z
           .record(TriggerSchema)
-          .describe("Triggers keyed by trigger name"),
+          .describe("Triggers keyed by handler name in function index"),
         timeout: z.number().int().describe("Execution timeout in seconds"),
         language: z.string().describe("Programming language, e.g. javascript"),
         env_vars: z
@@ -119,10 +120,19 @@ export function registerDevelopmentTools(server, client) {
             "Environment variables to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
           ),
         secrets: z
-          .array(z.string())
+          .array(
+            z.object({
+              _id: z
+                .string()
+                .optional()
+                .describe("Secret ID. Omit to create new."),
+              key: z.string().describe("Secret key"),
+              value: z.string().describe("Secret value"),
+            }),
+          )
           .optional()
           .describe(
-            "Array of env var IDs to inject as secrets. Secrets not in this array will be ejected.",
+            "Secrets to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
           ),
       }),
     },
@@ -192,14 +202,35 @@ export function registerDevelopmentTools(server, client) {
         const currentSecretIds = (fn.secrets || []).map((s) =>
           typeof s === "string" ? s : s._id,
         );
+        const desiredSecretIds = [];
 
-        for (const sid of secrets) {
+        for (const secret of secrets) {
+          if (secret._id) {
+            // Update existing secret
+            await client.put(`/secret/${secret._id}`, {
+              key: secret.key,
+              value: secret.value,
+            });
+            desiredSecretIds.push(secret._id);
+          } else {
+            // Create new secret
+            const created = await client.post("/secret", {
+              key: secret.key,
+              value: secret.value,
+            });
+            desiredSecretIds.push(created._id);
+          }
+        }
+
+        // Inject new secrets
+        for (const sid of desiredSecretIds) {
           if (!currentSecretIds.includes(sid)) {
             await client.put(`/function/${_id}/secret/${sid}`);
           }
         }
+        // Eject removed secrets
         for (const sid of currentSecretIds) {
-          if (!secrets.includes(sid)) {
+          if (!desiredSecretIds.includes(sid)) {
             await client.delete(`/function/${_id}/secret/${sid}`);
           }
         }
