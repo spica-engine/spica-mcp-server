@@ -27,7 +27,7 @@ export class SpicaClient {
   }
 
   async _request(method, path, { query, body, headers: extra } = {}) {
-    const url = `${this.baseUrl}/api${path}${query ? this._qs(query) : ""}`;
+    const url = `${this.baseUrl}${path}${query ? this._qs(query) : ""}`;
     const opts = { method, headers: this._headers(extra) };
     if (body !== undefined) opts.body = JSON.stringify(body);
 
