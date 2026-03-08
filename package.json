@@ -1,0 +1,19 @@
+{
+  "name": "spica-mcp-server",
+  "version": "1.0.0",
+  "description": "Nodejs MCP server for agents to interact with the Spica servers to Manage resources, Auditing, Debugging etc.",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "spica-mcp-server": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.4"
+  }
+}
