@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { SpicaFunction, Trigger } from "../types";
+import { index } from "../examples/function";
 
 const TriggerSchema = z.object({
   type: z
@@ -265,7 +266,11 @@ export function registerDevelopmentTools(
         "Returns 204 on success or a compilation diagnostics error on failure.",
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
-        index: z.string().describe("Source code of the function"),
+        index: z
+          .string()
+          .describe(
+            `Source code of the function, example: ${JSON.stringify(index, null, 2)}`,
+          ),
       }),
     },
     async ({ functionId, index }) => {
