@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { SpicaClient } from "../client.js";
-import type { ApiKey, Identity, PolicyBase } from "../types.js";
+import type { SpicaClient } from "../client";
+import type { ApiKey, Identity, PolicyBase } from "../types";
 
 const PolicyStatementSchema = z.object({
   action: z.string().describe("Action identifier"),

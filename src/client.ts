@@ -1,4 +1,4 @@
-import type { RequestOptions } from "./types.js";
+import type { RequestOptions } from "./types";
 
 export class SpicaApiError extends Error {
   constructor(

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { SpicaClient } from "../client.js";
-import type { StorageObject } from "../types.js";
+import type { SpicaClient } from "../client";
+import type { StorageObject } from "../types";
 
 export function registerStorageTools(
   server: McpServer,

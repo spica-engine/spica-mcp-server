@@ -2,14 +2,14 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { SpicaClient } from "./client.js";
-import { registerAuthTools } from "./tools/auth.js";
-import { registerDatabaseTools } from "./tools/database.js";
-import { registerDevelopmentTools } from "./tools/development.js";
-import { registerDebugTools } from "./tools/debug.js";
-import { registerAuditingTools } from "./tools/auditing.js";
-import { registerStorageTools } from "./tools/storage.js";
-import { registerVersionControlTools } from "./tools/versioncontrol.js";
+import { SpicaClient } from "./client";
+import { registerAuthTools } from "./tools/auth";
+import { registerDatabaseTools } from "./tools/database";
+import { registerDevelopmentTools } from "./tools/development";
+import { registerDebugTools } from "./tools/debug";
+import { registerAuditingTools } from "./tools/auditing";
+import { registerStorageTools } from "./tools/storage";
+import { registerVersionControlTools } from "./tools/versioncontrol";
 
 const SPICA_URL = process.env["SPICA_URL"];
 const SPICA_APIKEY = process.env["SPICA_APIKEY"];

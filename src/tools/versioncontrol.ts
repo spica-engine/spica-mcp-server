@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { SpicaClient } from "../client.js";
+import type { SpicaClient } from "../client";
 
 export function registerVersionControlTools(
   server: McpServer,
