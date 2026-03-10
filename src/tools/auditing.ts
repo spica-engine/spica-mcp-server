@@ -15,7 +15,6 @@ export function registerAuditingTools(
       description:
         "Returns activity / audit logs with optional filters for identifier, username, action type, resource, date range, and pagination.",
       annotations: { readOnlyHint: true },
-      outputSchema: ActivityListOutputSchema,
       inputSchema: z.object({
         identifier: z.string().optional().describe("Filter by identifier"),
         username: z.string().optional().describe("Filter by username"),

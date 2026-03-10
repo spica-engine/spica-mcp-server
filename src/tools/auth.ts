@@ -91,7 +91,6 @@ export function registerAuthTools(
           .optional()
           .describe("Policies to attach. Omitted policies will be detached."),
       }),
-      outputSchema: ApiKeyOutputSchema,
     },
     async ({ _id, name, description, active, policies }) => {
       const body: { name: string; active: boolean; description?: string } = {
@@ -222,7 +221,6 @@ export function registerAuthTools(
           .optional()
           .describe("Policies to attach. Omitted policies will be detached."),
       }),
-      outputSchema: IdentityOutputSchema,
     },
     async ({ _id, identifier, password, policies }) => {
       let identity: Identity;
@@ -353,7 +351,6 @@ export function registerAuthTools(
           .array(PolicyStatementSchema)
           .describe("Array of policy statements"),
       }),
-      outputSchema: PolicyOutputSchema,
     },
     async ({ _id, name, description, statement }) => {
       const body: PolicyBase = { name, statement };

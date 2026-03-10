@@ -67,7 +67,6 @@ export function registerStorageTools(
           data: z.string().describe("Base64-encoded content data"),
         }),
       }),
-      outputSchema: StorageObjectOutputSchema,
     },
     async ({ _id, name, content }) => {
       let result: StorageObject;
@@ -101,7 +100,6 @@ export function registerStorageTools(
         id: z.string().describe("Storage object ID"),
         name: z.string().describe("New file name"),
       }),
-      outputSchema: StorageObjectOutputSchema,
     },
     async ({ id, name }) => {
       const result = await client.patch(`/storage/${id}`, { name });

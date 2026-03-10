@@ -146,7 +146,6 @@ export function registerDevelopmentTools(
             "Secrets to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
           ),
       }),
-      outputSchema: FunctionOutputSchema,
     },
     async ({
       _id,
@@ -295,7 +294,6 @@ export function registerDevelopmentTools(
       title: "Save Function Dependencies",
       description:
         "Installs one or more npm packages as dependencies for a function.",
-      outputSchema: FunctionDependenciesOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         packages: z

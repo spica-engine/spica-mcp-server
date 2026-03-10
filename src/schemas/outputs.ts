@@ -8,7 +8,7 @@ const ObjectId = z.string().describe("Unique 24-character hex object ID");
 
 export const BucketOutputSchema = {
   _id: ObjectId,
-  title: z.string().optional(),
+  title: z.string(),
   icon: z.string().optional(),
   description: z.string().optional(),
   primary: z.string().optional(),
@@ -226,7 +226,24 @@ export const VCCommandResultOutputSchema = {
 // ─── Profile / Debug ──────────────────────────────────────────────────────────
 
 export const ProfileListOutputSchema = {
-  entries: z.array(z.record(z.any())),
+  entries: z.array(
+    z.object({
+      op: z.any().optional(),
+      ns: z.any().optional(),
+      command: z.any().optional(),
+      keysExamined: z.any().optional(),
+      docsExamined: z.any().optional(),
+      numYield: z.any().optional(),
+      locks: z.any().optional(),
+      millis: z.any().optional(),
+      planSummary: z.any().optional(),
+      ts: z.any().optional(),
+      client: z.any().optional(),
+      appName: z.any().optional(),
+      allUsers: z.any().optional(),
+      user: z.any().optional(),
+    }),
+  ),
 };
 
 // ─── Success message ──────────────────────────────────────────────────────────

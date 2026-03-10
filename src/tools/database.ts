@@ -130,7 +130,6 @@ export function registerDatabaseTools(
           .optional()
           .describe("Custom database indexes"),
       }),
-      outputSchema: BucketOutputSchema,
     },
     async ({ _id, ...body }) => {
       let bucket: unknown;
@@ -227,7 +226,6 @@ export function registerDatabaseTools(
       description:
         "Creates or updates a document in a bucket (upsert). When the document contains _id it is replaced, otherwise inserted. " +
         "The document body must conform to the bucket's schema definition.",
-      outputSchema: { _id: z.string() },
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         document: z
