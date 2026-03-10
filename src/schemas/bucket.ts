@@ -29,7 +29,7 @@ const BucketPropertySchema: z.ZodType = z.lazy(() =>
     description: z.string().optional().describe("Description of the field"),
     default: z.any().optional().describe("Default value for the field"),
     examples: z
-      .array(z.any())
+      .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
       .optional()
       .describe("Example values for this field"),
 
@@ -102,7 +102,7 @@ const BucketPropertySchema: z.ZodType = z.lazy(() =>
 
     // Enum
     enum: z
-      .array(z.any())
+      .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
       .min(1)
       .optional()
       .describe("Allowed values. Each value must be unique"),

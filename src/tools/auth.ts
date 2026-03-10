@@ -55,7 +55,9 @@ export function registerAuthTools(
       outputSchema: ApiKeyListOutputSchema,
     },
     async () => {
-      const data = await client.get("/passport/apikey");
+      const { data } = (await client.get("/passport/apikey")) as {
+        data: ApiKey[];
+      };
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
@@ -321,12 +323,12 @@ export function registerAuthTools(
       }),
     },
     async ({ filter, limit, skip, sort }) => {
-      const data = await client.get("/passport/policy", {
+      const { data } = (await client.get("/passport/policy", {
         filter,
         limit,
         skip,
         sort,
-      });
+      })) as { data: PolicyBase[] };
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },

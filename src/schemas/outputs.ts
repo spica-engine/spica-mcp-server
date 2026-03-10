@@ -122,14 +122,10 @@ const PolicyStatementOutputSchema = z.object({
   action: z.string(),
   module: z.string(),
   resource: z
-    .union([
-      z.string(),
-      z.array(z.string()),
-      z.object({
-        include: z.string().optional(),
-        exclude: z.string().optional(),
-      }),
-    ])
+    .object({
+      include: z.array(z.string()),
+      exclude: z.array(z.string()).optional(),
+    })
     .optional(),
 });
 
