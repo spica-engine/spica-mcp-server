@@ -1,0 +1,239 @@
+import { z } from "zod";
+
+// ─── Shared ───────────────────────────────────────────────────────────────────
+
+const ObjectId = z.string().describe("Unique 24-character hex object ID");
+
+// ─── Bucket ───────────────────────────────────────────────────────────────────
+
+export const BucketOutputSchema = {
+  _id: ObjectId,
+  title: z.string().optional(),
+  icon: z.string().optional(),
+  description: z.string().optional(),
+  primary: z.string().optional(),
+  history: z.boolean().optional(),
+  readOnly: z.boolean().optional(),
+  category: z.string().optional(),
+  order: z.number().optional(),
+  required: z.array(z.string()).optional(),
+  properties: z.record(z.any()).optional(),
+  acl: z
+    .object({
+      read: z.string(),
+      write: z.string(),
+    })
+    .optional(),
+  documentSettings: z
+    .object({
+      countLimit: z.number().optional(),
+      limitExceedBehaviour: z.enum(["prevent", "remove"]).optional(),
+    })
+    .optional(),
+  indexes: z
+    .array(
+      z.object({
+        definition: z.record(z.any()),
+        options: z.record(z.any()).optional(),
+      }),
+    )
+    .optional(),
+};
+
+export const BucketListOutputSchema = {
+  buckets: z.array(z.object(BucketOutputSchema)),
+};
+
+// ─── Bucket Documents ─────────────────────────────────────────────────────────
+
+export const BucketDocumentOutputSchema = {
+  _id: ObjectId,
+};
+
+export const BucketDocumentListOutputSchema = {
+  documents: z.array(z.record(z.any())),
+};
+
+export const PaginatedBucketDataOutputSchema = {
+  meta: z.object({ total: z.number() }),
+  data: z.array(z.record(z.any())),
+};
+
+// ─── Function ─────────────────────────────────────────────────────────────────
+
+const TriggerOutputSchema = z.object({
+  type: z.string(),
+  active: z.boolean().optional(),
+  options: z.record(z.any()),
+});
+
+export const FunctionOutputSchema = {
+  _id: ObjectId,
+  name: z.string(),
+  description: z.string().optional(),
+  triggers: z.record(TriggerOutputSchema),
+  timeout: z.number(),
+  language: z.string(),
+  env_vars: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({ _id: z.string(), key: z.string(), value: z.string() }),
+      ]),
+    )
+    .optional(),
+  secrets: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({ _id: z.string(), key: z.string(), value: z.string() }),
+      ]),
+    )
+    .optional(),
+};
+
+export const FunctionListOutputSchema = {
+  functions: z.array(z.object(FunctionOutputSchema)),
+};
+
+export const FunctionIndexOutputSchema = {
+  index: z.string().describe("Source code of the function"),
+};
+
+export const FunctionDependenciesOutputSchema = {
+  dependencies: z.record(z.string()).describe("Package name -> version map"),
+};
+
+export const FunctionLogOutputSchema = {
+  _id: ObjectId,
+  function: z.string(),
+  channel: z.string().optional(),
+  content: z.string(),
+  level: z.number().optional(),
+};
+
+export const FunctionLogListOutputSchema = {
+  logs: z.array(z.object(FunctionLogOutputSchema)),
+};
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+const PolicyStatementOutputSchema = z.object({
+  action: z.string(),
+  module: z.string(),
+  resource: z
+    .union([
+      z.string(),
+      z.array(z.string()),
+      z.object({
+        include: z.string().optional(),
+        exclude: z.string().optional(),
+      }),
+    ])
+    .optional(),
+});
+
+export const PolicyOutputSchema = {
+  _id: ObjectId,
+  name: z.string(),
+  description: z.string().optional(),
+  statement: z.array(PolicyStatementOutputSchema),
+};
+
+export const PolicyListOutputSchema = {
+  policies: z.array(z.object(PolicyOutputSchema)),
+};
+
+export const ApiKeyOutputSchema = {
+  _id: ObjectId,
+  name: z.string(),
+  description: z.string().optional(),
+  active: z.boolean(),
+  key: z.string().optional(),
+  policies: z.array(z.string()).optional(),
+};
+
+export const ApiKeyListOutputSchema = {
+  apikeys: z.array(z.object(ApiKeyOutputSchema)),
+};
+
+export const IdentityOutputSchema = {
+  _id: ObjectId,
+  identifier: z.string(),
+  policies: z.array(z.string()).optional(),
+};
+
+export const IdentityListOutputSchema = {
+  identities: z.array(z.object(IdentityOutputSchema)),
+};
+
+export const UserOutputSchema = {
+  _id: ObjectId,
+  identifier: z.string().optional(),
+  policies: z.array(z.string()).optional(),
+};
+
+export const UserListOutputSchema = {
+  users: z.array(z.object(UserOutputSchema)),
+};
+
+// ─── Storage ──────────────────────────────────────────────────────────────────
+
+export const StorageObjectOutputSchema = {
+  _id: ObjectId,
+  name: z.string(),
+  url: z.string().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+  content: z
+    .object({
+      type: z.string().describe("MIME type"),
+      size: z.number().optional().describe("Size in bytes"),
+    })
+    .optional(),
+};
+
+export const StorageObjectListOutputSchema = {
+  objects: z.array(z.object(StorageObjectOutputSchema)),
+};
+
+// ─── Activity ─────────────────────────────────────────────────────────────────
+
+export const ActivityOutputSchema = {
+  _id: ObjectId,
+  identifier: z.string().optional(),
+  action: z.number().optional(),
+  resource: z.array(z.string()).optional(),
+  created_at: z.string().optional(),
+};
+
+export const ActivityListOutputSchema = {
+  activities: z.array(z.object(ActivityOutputSchema)),
+};
+
+// ─── Version Control ──────────────────────────────────────────────────────────
+
+export const VCCommandOutputSchema = {
+  command: z.string(),
+  params: z.record(z.any()).optional(),
+};
+
+export const VCCommandListOutputSchema = {
+  commands: z.array(z.record(z.any())),
+};
+
+export const VCCommandResultOutputSchema = {
+  result: z.any(),
+};
+
+// ─── Profile / Debug ──────────────────────────────────────────────────────────
+
+export const ProfileListOutputSchema = {
+  entries: z.array(z.record(z.any())),
+};
+
+// ─── Success message ──────────────────────────────────────────────────────────
+
+export const SuccessMessageOutputSchema = {
+  message: z.string().describe("Success status message"),
+};

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
+import { ActivityListOutputSchema } from "../schemas/outputs";
 
 export function registerAuditingTools(
   server: McpServer,
@@ -14,6 +15,7 @@ export function registerAuditingTools(
       description:
         "Returns activity / audit logs with optional filters for identifier, username, action type, resource, date range, and pagination.",
       annotations: { readOnlyHint: true },
+      outputSchema: ActivityListOutputSchema,
       inputSchema: z.object({
         identifier: z.string().optional().describe("Filter by identifier"),
         username: z.string().optional().describe("Filter by username"),
@@ -58,6 +60,7 @@ export function registerAuditingTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { activities: data },
       };
     },
   );

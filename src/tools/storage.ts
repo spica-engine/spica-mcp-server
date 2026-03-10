@@ -2,6 +2,10 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { StorageObject } from "../types";
+import {
+  StorageObjectOutputSchema,
+  StorageObjectListOutputSchema,
+} from "../schemas/outputs";
 
 export function registerStorageTools(
   server: McpServer,
@@ -15,6 +19,7 @@ export function registerStorageTools(
       description:
         "Returns storage objects with optional filtering, pagination, and sorting.",
       annotations: { readOnlyHint: true },
+      outputSchema: StorageObjectListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         paginate: z
@@ -38,6 +43,7 @@ export function registerStorageTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { objects: data },
       };
     },
   );
@@ -61,6 +67,7 @@ export function registerStorageTools(
           data: z.string().describe("Base64-encoded content data"),
         }),
       }),
+      outputSchema: StorageObjectOutputSchema,
     },
     async ({ _id, name, content }) => {
       let result: StorageObject;
@@ -79,6 +86,7 @@ export function registerStorageTools(
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
+        structuredContent: result as unknown as Record<string, unknown>,
       };
     },
   );
@@ -93,6 +101,7 @@ export function registerStorageTools(
         id: z.string().describe("Storage object ID"),
         name: z.string().describe("New file name"),
       }),
+      outputSchema: StorageObjectOutputSchema,
     },
     async ({ id, name }) => {
       const result = await client.patch(`/storage/${id}`, { name });
@@ -100,6 +109,7 @@ export function registerStorageTools(
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
+        structuredContent: result as Record<string, unknown>,
       };
     },
   );

@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
+import {
+  ProfileListOutputSchema,
+  FunctionLogListOutputSchema,
+} from "../schemas/outputs";
 
 export function registerDebugTools(
   server: McpServer,
@@ -14,6 +18,7 @@ export function registerDebugTools(
       description:
         "Returns profiled entries for bucket data. Useful for debugging data distribution and patterns.",
       annotations: { readOnlyHint: true },
+      outputSchema: ProfileListOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         filter: z.string().optional().describe("JSON filter object"),
@@ -33,6 +38,7 @@ export function registerDebugTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { entries: data },
       };
     },
   );
@@ -45,6 +51,7 @@ export function registerDebugTools(
       description:
         "Returns profiled user entries. Useful for debugging user data patterns.",
       annotations: { readOnlyHint: true },
+      outputSchema: ProfileListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max entries to return"),
@@ -63,6 +70,7 @@ export function registerDebugTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { entries: data },
       };
     },
   );
@@ -75,6 +83,7 @@ export function registerDebugTools(
       description:
         "Returns function execution logs with optional filters for date range, function IDs, channel, log levels, and content search.",
       annotations: { readOnlyHint: true },
+      outputSchema: FunctionLogListOutputSchema,
       inputSchema: z.object({
         limit: z
           .number()
@@ -129,6 +138,7 @@ export function registerDebugTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { logs: data },
       };
     },
   );

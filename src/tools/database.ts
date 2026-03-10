@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
+import { BucketPropertySchema } from "../schemas/bucket";
+import {
+  BucketOutputSchema,
+  BucketListOutputSchema,
+  BucketDocumentListOutputSchema,
+} from "../schemas/outputs";
 
 export function registerDatabaseTools(
   server: McpServer,
@@ -13,6 +19,7 @@ export function registerDatabaseTools(
       title: "List Buckets",
       description: "Returns all bucket schemas from the Spica server.",
       annotations: { readOnlyHint: true },
+      outputSchema: BucketListOutputSchema,
     },
     async () => {
       const data = await client.get("/bucket");
@@ -20,6 +27,7 @@ export function registerDatabaseTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { buckets: data },
       };
     },
   );
@@ -30,29 +38,53 @@ export function registerDatabaseTools(
     {
       title: "Save Bucket",
       description:
-        "Creates or updates a bucket schema (upsert). When _id is provided the bucket is replaced, otherwise created. " +
-        "The 'properties' field defines the bucket's data model using JSON Schema types and extended Spica types " +
-        "(objectid, storage, richtext, textarea, color, multiselect, relation, date, location, json, hash, encrypted).",
+        "Creates or updates a bucket schema (upsert). When _id is provided the bucket is replaced, otherwise created.\n\n" +
+        "The 'properties' field defines the bucket's data model. Each property has a 'type' which can be:\n" +
+        "- Standard types: string, number, boolean, object, array\n" +
+        "- Spica types: relation (link to another bucket), storage (file reference), richtext, textarea, color, " +
+        "date, location (GeoJSON Point), multiselect, json, hash, encrypted\n\n" +
+        "For 'relation' type: bucketId and relationType (onetoone/onetomany) are required.\n" +
+        "For 'object' type: use nested 'properties' to define sub-fields.\n" +
+        "For 'array'/'multiselect' type: use 'items' to define the element schema.",
       inputSchema: z.object({
         _id: z.string().optional().describe("Bucket ID. Omit to create."),
-        title: z.string().optional().describe("Display title"),
-        icon: z.string().optional().describe("Icon identifier"),
-        description: z.string().optional().describe("Bucket description"),
+        title: z
+          .string()
+          .min(4)
+          .max(100)
+          .describe("Display title of the bucket"),
+        icon: z
+          .string()
+          .optional()
+          .describe("Material icon identifier. Default: 'view_stream'"),
+        description: z
+          .string()
+          .min(5)
+          .max(250)
+          .describe("Description of the bucket"),
         primary: z
           .string()
           .describe("Primary field key used as display column"),
         history: z
           .boolean()
           .optional()
-          .describe("Enable document history tracking"),
-        readOnly: z.boolean().optional().describe("Make bucket read-only"),
-        properties: z
-          .record(z.any())
+          .describe("Enable document history tracking. Default: false"),
+        readOnly: z
+          .boolean()
           .optional()
           .describe(
-            "Field definitions keyed by field name. Each value is a BucketProperty object with type, title, description, options, enum, items, properties, etc.",
+            "When true, data of this bucket cannot be edited on the bucket-data page",
           ),
-        order: z.number().int().optional().describe("Display order"),
+        category: z
+          .string()
+          .optional()
+          .describe("Category name for grouping buckets"),
+        properties: z
+          .record(BucketPropertySchema)
+          .describe(
+            "Field definitions keyed by field name. Property names must be lowercase with underscores/digits only (pattern: ^(?!(_id)$)([a-z_0-9]*)+$). At least one property is required.",
+          ),
+        order: z.number().optional().describe("Display order of the bucket"),
         required: z
           .array(z.string())
           .optional()
@@ -61,40 +93,50 @@ export function registerDatabaseTools(
           read: z
             .string()
             .describe(
-              "ACL expression for read access. Example:'document.owner==auth._id'(users can only read their own data). Default 'true==true'.",
+              "ACL expression for read access. Example: 'document.owner==auth._id' (users can only read their own data). Default: 'true==true'",
             ),
           write: z
             .string()
             .describe(
-              "ACL expression for write access. Example:'document.owner==auth._id'(users can only write their own data). Default 'true==true'.",
+              "ACL expression for write access. Example: 'document.owner==auth._id' (users can only write their own data). Default: 'true==true'",
             ),
         }),
         documentSettings: z
           .object({
-            countLimit: z.number().int().optional(),
-            limitExceedBehaviour: z.enum(["prevent", "remove"]).optional(),
+            countLimit: z
+              .number()
+              .min(1)
+              .optional()
+              .describe("Maximum number of documents this bucket can hold"),
+            limitExceedBehaviour: z
+              .enum(["prevent", "remove"])
+              .optional()
+              .describe(
+                "'prevent': reject new inserts when limit is reached. 'remove': delete oldest documents to stay within limit",
+              ),
           })
           .optional()
           .describe("Document count limits and overflow behaviour"),
         indexes: z
           .array(
-            z
-              .object({
-                definition: z
-                  .record(z.any())
-                  .describe("MongoDB index definition object"),
-                options: z
-                  .record(z.any())
-                  .optional()
-                  .describe("MongoDB index options object"),
-              })
-              .describe(
-                "MongoDB index definition with 'definition' and optional 'options'",
-              ),
+            z.object({
+              definition: z
+                .record(z.union([z.number().int(), z.string()]))
+                .describe(
+                  "Field paths and index direction (1 for ascending, -1 for descending, or 'text' for text index)",
+                ),
+              options: z
+                .record(z.any())
+                .optional()
+                .describe(
+                  "Additional MongoDB index options (e.g. unique, sparse, expireAfterSeconds for TTL)",
+                ),
+            }),
           )
           .optional()
           .describe("Custom database indexes"),
       }),
+      outputSchema: BucketOutputSchema,
     },
     async ({ _id, ...body }) => {
       let bucket: unknown;
@@ -107,6 +149,7 @@ export function registerDatabaseTools(
         content: [
           { type: "text" as const, text: JSON.stringify(bucket, null, 2) },
         ],
+        structuredContent: bucket as Record<string, unknown>,
       };
     },
   );
@@ -119,6 +162,7 @@ export function registerDatabaseTools(
       description:
         "Returns documents from a bucket with optional filtering, pagination, sorting, and relation resolution.",
       annotations: { readOnlyHint: true },
+      outputSchema: BucketDocumentListOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         filter: z
@@ -176,6 +220,7 @@ export function registerDatabaseTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { documents: data },
       };
     },
   );
@@ -188,6 +233,7 @@ export function registerDatabaseTools(
       description:
         "Creates or updates a document in a bucket (upsert). When the document contains _id it is replaced, otherwise inserted. " +
         "The document body must conform to the bucket's schema definition.",
+      outputSchema: { _id: z.string() },
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         document: z
@@ -211,6 +257,7 @@ export function registerDatabaseTools(
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
+        structuredContent: result as Record<string, unknown>,
       };
     },
   );

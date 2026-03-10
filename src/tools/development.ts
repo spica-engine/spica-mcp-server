@@ -1,41 +1,26 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type {
+  McpServer,
+  RegisteredTool,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { SpicaFunction, Trigger } from "../types";
+import type { TriggerSchemaResult } from "../schemas/triggers";
 import { index } from "../examples/function";
-
-const TriggerSchema = z.object({
-  type: z
-    .string()
-    .describe(
-      "Trigger type (e.g., http, schedule, database, bucket, firehose, system)",
-    ),
-  active: z.boolean().optional().describe("Whether the trigger is active"),
-  options: z.record(z.any()).describe("Trigger-specific options"),
-});
+import {
+  FunctionOutputSchema,
+  FunctionListOutputSchema,
+  FunctionIndexOutputSchema,
+  FunctionDependenciesOutputSchema,
+  SuccessMessageOutputSchema,
+} from "../schemas/outputs";
 
 export function registerDevelopmentTools(
   server: McpServer,
   client: SpicaClient,
-): void {
-  // ── list_triggers ─────────────────────────────────────────────────────
-  server.registerTool(
-    "list_triggers",
-    {
-      title: "List Available Triggers",
-      description:
-        "Returns available function enqueuers (trigger types), runtimes, and default timeout information.",
-      annotations: { readOnlyHint: true },
-    },
-    async () => {
-      const data = await client.get("/function/information");
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    },
-  );
+  triggerInfo: TriggerSchemaResult,
+): { saveFunctionTool: RegisteredTool } {
+  const runtimeNames = triggerInfo.runtimes.map((r) => r.language).join(", ");
 
   // ── list_functions ────────────────────────────────────────────────────
   server.registerTool(
@@ -44,6 +29,7 @@ export function registerDevelopmentTools(
       title: "List Functions",
       description: "Returns all serverless function objects.",
       annotations: { readOnlyHint: true },
+      outputSchema: FunctionListOutputSchema,
     },
     async () => {
       const data = await client.get("/function");
@@ -51,6 +37,7 @@ export function registerDevelopmentTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { functions: data },
       };
     },
   );
@@ -62,6 +49,7 @@ export function registerDevelopmentTools(
       title: "Get Function Index",
       description: "Returns the source code (index) of a specific function.",
       annotations: { readOnlyHint: true },
+      outputSchema: FunctionIndexOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
       }),
@@ -72,6 +60,7 @@ export function registerDevelopmentTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: data as Record<string, unknown>,
       };
     },
   );
@@ -84,6 +73,7 @@ export function registerDevelopmentTools(
       description:
         "Returns the installed dependencies and their versions for a specific function.",
       annotations: { readOnlyHint: true },
+      outputSchema: FunctionDependenciesOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
       }),
@@ -94,12 +84,13 @@ export function registerDevelopmentTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: data as Record<string, unknown>,
       };
     },
   );
 
   // ── save_function ─────────────────────────────────────────────────────
-  server.registerTool(
+  const saveFunctionTool = server.registerTool(
     "save_function",
     {
       title: "Save Function",
@@ -115,10 +106,19 @@ export function registerDevelopmentTools(
         name: z.string().describe("Function name"),
         description: z.string().optional().describe("Description"),
         triggers: z
-          .record(TriggerSchema)
+          .record(triggerInfo.schema as z.ZodType)
           .describe("Triggers keyed by handler name in function index"),
-        timeout: z.number().int().describe("Execution timeout in seconds"),
-        language: z.string().describe("Programming language, e.g. javascript"),
+        timeout: z
+          .number()
+          .int()
+          .describe(
+            `Execution timeout in seconds. Default: ${triggerInfo.timeout}`,
+          ),
+        language: z
+          .string()
+          .describe(
+            `Programming language. Available runtimes: ${runtimeNames}`,
+          ),
         env_vars: z
           .array(
             z.object({
@@ -150,6 +150,7 @@ export function registerDevelopmentTools(
             "Secrets to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
           ),
       }),
+      outputSchema: FunctionOutputSchema,
     },
     async ({
       _id,
@@ -252,6 +253,7 @@ export function registerDevelopmentTools(
       fn = (await client.get(`/function/${fnId}`)) as SpicaFunction;
       return {
         content: [{ type: "text" as const, text: JSON.stringify(fn, null, 2) }],
+        structuredContent: fn as unknown as Record<string, unknown>,
       };
     },
   );
@@ -264,6 +266,7 @@ export function registerDevelopmentTools(
       description:
         "Replaces and compiles the source code (index) of a function. " +
         "Returns 204 on success or a compilation diagnostics error on failure.",
+      outputSchema: SuccessMessageOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         index: z
@@ -282,6 +285,9 @@ export function registerDevelopmentTools(
             text: "Function index updated and compiled successfully.",
           },
         ],
+        structuredContent: {
+          message: "Function index updated and compiled successfully.",
+        },
       };
     },
   );
@@ -293,6 +299,7 @@ export function registerDevelopmentTools(
       title: "Save Function Dependencies",
       description:
         "Installs one or more npm packages as dependencies for a function.",
+      outputSchema: FunctionDependenciesOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         packages: z
@@ -308,7 +315,10 @@ export function registerDevelopmentTools(
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
+        structuredContent: result as Record<string, unknown>,
       };
     },
   );
+
+  return { saveFunctionTool };
 }

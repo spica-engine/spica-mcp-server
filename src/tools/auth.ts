@@ -2,6 +2,15 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { ApiKey, Identity, PolicyBase } from "../types";
+import {
+  ApiKeyOutputSchema,
+  ApiKeyListOutputSchema,
+  IdentityOutputSchema,
+  IdentityListOutputSchema,
+  PolicyOutputSchema,
+  PolicyListOutputSchema,
+  UserListOutputSchema,
+} from "../schemas/outputs";
 
 const PolicyStatementSchema = z.object({
   action: z.string().describe("Action identifier"),
@@ -43,6 +52,7 @@ export function registerAuthTools(
       description:
         "Returns all API keys from the Spica server. No pagination or filtering.",
       annotations: { readOnlyHint: true },
+      outputSchema: ApiKeyListOutputSchema,
     },
     async () => {
       const data = await client.get("/passport/apikey");
@@ -50,6 +60,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { apikeys: data },
       };
     },
   );
@@ -78,6 +89,7 @@ export function registerAuthTools(
           .optional()
           .describe("Policies to attach. Omitted policies will be detached."),
       }),
+      outputSchema: ApiKeyOutputSchema,
     },
     async ({ _id, name, description, active, policies }) => {
       const body: { name: string; active: boolean; description?: string } = {
@@ -146,6 +158,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(apikey, null, 2) },
         ],
+        structuredContent: apikey as unknown as Record<string, unknown>,
       };
     },
   );
@@ -157,6 +170,7 @@ export function registerAuthTools(
       title: "List Identities",
       description: "Returns identities with optional filtering and pagination.",
       annotations: { readOnlyHint: true },
+      outputSchema: IdentityListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),
@@ -178,6 +192,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { identities: data },
       };
     },
   );
@@ -205,6 +220,7 @@ export function registerAuthTools(
           .optional()
           .describe("Policies to attach. Omitted policies will be detached."),
       }),
+      outputSchema: IdentityOutputSchema,
     },
     async ({ _id, identifier, password, policies }) => {
       let identity: Identity;
@@ -280,6 +296,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(identity, null, 2) },
         ],
+        structuredContent: identity as unknown as Record<string, unknown>,
       };
     },
   );
@@ -292,6 +309,7 @@ export function registerAuthTools(
       description:
         "Returns access policies with optional filtering and pagination.",
       annotations: { readOnlyHint: true },
+      outputSchema: PolicyListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),
@@ -313,6 +331,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { policies: data },
       };
     },
   );
@@ -332,6 +351,7 @@ export function registerAuthTools(
           .array(PolicyStatementSchema)
           .describe("Array of policy statements"),
       }),
+      outputSchema: PolicyOutputSchema,
     },
     async ({ _id, name, description, statement }) => {
       const body: PolicyBase = { name, statement };
@@ -351,6 +371,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(policy, null, 2) },
         ],
+        structuredContent: policy as unknown as Record<string, unknown>,
       };
     },
   );
@@ -363,6 +384,7 @@ export function registerAuthTools(
       description:
         "Returns users with optional pagination, sorting, and filtering.",
       annotations: { readOnlyHint: true },
+      outputSchema: UserListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),
@@ -389,6 +411,7 @@ export function registerAuthTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { users: data },
       };
     },
   );

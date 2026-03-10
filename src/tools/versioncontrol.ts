@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
+import {
+  VCCommandListOutputSchema,
+  VCCommandResultOutputSchema,
+} from "../schemas/outputs";
 
 export function registerVersionControlTools(
   server: McpServer,
@@ -13,6 +17,7 @@ export function registerVersionControlTools(
       title: "List Version Control Commands",
       description: "Returns the available version control (Git) commands.",
       annotations: { readOnlyHint: true },
+      outputSchema: VCCommandListOutputSchema,
     },
     async () => {
       const data = await client.get("/versioncontrol/commands");
@@ -20,6 +25,7 @@ export function registerVersionControlTools(
         content: [
           { type: "text" as const, text: JSON.stringify(data, null, 2) },
         ],
+        structuredContent: { commands: data },
       };
     },
   );
@@ -32,6 +38,7 @@ export function registerVersionControlTools(
       description:
         "Executes a version control command with the given parameters. " +
         "Use list_versioncontrol_commands first to discover available commands.",
+      outputSchema: VCCommandResultOutputSchema,
       inputSchema: z.object({
         command: z.string().describe("Name of the command to execute"),
         params: z
@@ -49,6 +56,7 @@ export function registerVersionControlTools(
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
+        structuredContent: { result },
       };
     },
   );
