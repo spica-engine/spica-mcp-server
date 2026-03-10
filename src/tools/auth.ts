@@ -354,42 +354,4 @@ export function registerAuthTools(
       };
     },
   );
-
-  // ── list_users ────────────────────────────────────────────────────────
-  server.registerTool(
-    "list_users",
-    {
-      title: "List Users",
-      description:
-        "Returns users with optional pagination, sorting, and filtering.",
-      annotations: { readOnlyHint: true },
-      inputSchema: z.object({
-        filter: z.string().optional().describe("JSON filter object"),
-        limit: z.number().int().optional().describe("Max documents to return"),
-        skip: z.number().int().optional().describe("Documents to skip"),
-        sort: z
-          .string()
-          .optional()
-          .describe('JSON sort object, e.g. {"username":1}'),
-        paginate: z
-          .boolean()
-          .optional()
-          .describe("When true, response includes pagination metadata"),
-      }),
-    },
-    async ({ filter, limit, skip, sort, paginate }) => {
-      const data = await client.get("/passport/user", {
-        filter,
-        limit,
-        skip,
-        sort,
-        paginate,
-      });
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    },
-  );
 }

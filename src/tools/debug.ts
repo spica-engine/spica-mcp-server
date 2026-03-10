@@ -6,67 +6,6 @@ export function registerDebugTools(
   server: McpServer,
   client: SpicaClient,
 ): void {
-  // ── list_bucket_data_profile ──────────────────────────────────────────
-  server.registerTool(
-    "list_bucket_data_profile",
-    {
-      title: "List Bucket Data Profile",
-      description:
-        "Returns profiled entries for bucket data. Useful for debugging data distribution and patterns.",
-      annotations: { readOnlyHint: true },
-      inputSchema: z.object({
-        bucketId: z.string().describe("Bucket ID"),
-        filter: z.string().optional().describe("JSON filter object"),
-        limit: z.number().int().optional().describe("Max entries to return"),
-        skip: z.number().int().optional().describe("Entries to skip"),
-        sort: z.string().optional().describe("JSON sort object"),
-      }),
-    },
-    async ({ bucketId, filter, limit, skip, sort }) => {
-      const data = await client.get(`/bucket/${bucketId}/data/profile`, {
-        filter,
-        limit,
-        skip,
-        sort,
-      });
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    },
-  );
-
-  // ── list_user_profile ─────────────────────────────────────────────────
-  server.registerTool(
-    "list_user_profile",
-    {
-      title: "List User Profile",
-      description:
-        "Returns profiled user entries. Useful for debugging user data patterns.",
-      annotations: { readOnlyHint: true },
-      inputSchema: z.object({
-        filter: z.string().optional().describe("JSON filter object"),
-        limit: z.number().int().optional().describe("Max entries to return"),
-        skip: z.number().int().optional().describe("Entries to skip"),
-        sort: z.string().optional().describe("JSON sort object"),
-      }),
-    },
-    async ({ filter, limit, skip, sort }) => {
-      const data = await client.get("/passport/user/profile", {
-        filter,
-        limit,
-        skip,
-        sort,
-      });
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    },
-  );
-
   // ── list_function_logs ────────────────────────────────────────────────
   server.registerTool(
     "list_function_logs",

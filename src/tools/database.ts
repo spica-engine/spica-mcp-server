@@ -68,15 +68,6 @@ export function registerDatabaseTools(
           })
           .optional()
           .describe("Document count limits and overflow behaviour"),
-        indexes: z
-          .array(
-            z.object({
-              definition: z.record(z.any()),
-              options: z.record(z.any()).optional(),
-            }),
-          )
-          .optional()
-          .describe("Custom database indexes"),
       }),
     },
     async ({ _id, ...body }) => {

@@ -104,12 +104,7 @@ export function registerDevelopmentTools(
     {
       title: "Save Function",
       description:
-        "Creates or updates a serverless function (upsert). When _id is provided the function is replaced, otherwise created.\n\n" +
-        "Environment variable and secret management:\n" +
-        "- env_vars: array of { _id?, key, value } objects. Items without _id are created as new env vars and injected. " +
-        "Items with _id are updated. Env vars not present in the array are ejected from the function.\n" +
-        "- secrets: array of { _id?, key, value } objects. Items without _id are created as new secrets and injected. " +
-        "Items with _id are updated. Secrets not present in the array are ejected from the function.\n",
+        "Creates or updates a serverless function (upsert). When _id is provided the function is replaced, otherwise created.",
       inputSchema: z.object({
         _id: z.string().optional().describe("Function ID. Omit to create."),
         name: z.string().describe("Function name"),
@@ -119,55 +114,18 @@ export function registerDevelopmentTools(
           .describe("Triggers keyed by handler name in function index"),
         timeout: z.number().int().describe("Execution timeout in seconds"),
         language: z.string().describe("Programming language, e.g. javascript"),
-        env_vars: z
-          .array(
-            z.object({
-              _id: z
-                .string()
-                .optional()
-                .describe("Env var ID. Omit to create new."),
-              key: z.string().describe("Variable key"),
-              value: z.string().describe("Variable value"),
-            }),
-          )
-          .optional()
-          .describe(
-            "Environment variables to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
-          ),
-        secrets: z
-          .array(
-            z.object({
-              _id: z
-                .string()
-                .optional()
-                .describe("Secret ID. Omit to create new."),
-              key: z.string().describe("Secret key"),
-              value: z.string().describe("Secret value"),
-            }),
-          )
-          .optional()
-          .describe(
-            "Secrets to manage. New items (no _id) are created + injected. Existing items (_id) are updated. Removed items are ejected.",
-          ),
+        env: z.object({}).describe("Environment variables as key-value pairs"),
       }),
     },
-    async ({
-      _id,
-      name,
-      description,
-      triggers,
-      timeout,
-      language,
-      env_vars,
-      secrets,
-    }) => {
+    async ({ _id, name, description, triggers, timeout, language, env }) => {
       const fnBody: {
         name: string;
         triggers: Record<string, Trigger>;
         timeout: number;
         language: string;
         description?: string;
-      } = { name, triggers, timeout, language };
+        env?: Record<string, string>;
+      } = { name, triggers, timeout, language, env };
       if (description !== undefined) fnBody.description = description;
 
       let fn: SpicaFunction;
@@ -179,74 +137,6 @@ export function registerDevelopmentTools(
       } else {
         fn = (await client.post("/function", fnBody)) as SpicaFunction;
         fnId = fn._id;
-      }
-
-      if (env_vars !== undefined) {
-        const currentEnvIds = (fn.env_vars ?? []).map((e) =>
-          typeof e === "string" ? e : e._id,
-        );
-        const desiredEnvIds: string[] = [];
-
-        for (const ev of env_vars) {
-          if (ev._id) {
-            await client.put(`/env-var/${ev._id}`, {
-              key: ev.key,
-              value: ev.value,
-            });
-            desiredEnvIds.push(ev._id);
-          } else {
-            const created = (await client.post("/env-var", {
-              key: ev.key,
-              value: ev.value,
-            })) as { _id: string };
-            desiredEnvIds.push(created._id);
-          }
-        }
-
-        for (const eid of desiredEnvIds) {
-          if (!currentEnvIds.includes(eid)) {
-            await client.put(`/function/${fnId}/env-var/${eid}`);
-          }
-        }
-        for (const eid of currentEnvIds) {
-          if (!desiredEnvIds.includes(eid)) {
-            await client.delete(`/function/${fnId}/env-var/${eid}`);
-          }
-        }
-      }
-
-      if (secrets !== undefined) {
-        const currentSecretIds = (fn.secrets ?? []).map((s) =>
-          typeof s === "string" ? s : s._id,
-        );
-        const desiredSecretIds: string[] = [];
-
-        for (const secret of secrets) {
-          if (secret._id) {
-            await client.put(`/secret/${secret._id}`, {
-              key: secret.key,
-              value: secret.value,
-            });
-            desiredSecretIds.push(secret._id);
-          } else {
-            const created = (await client.post("/secret", {
-              key: secret.key,
-              value: secret.value,
-            })) as { _id: string };
-            desiredSecretIds.push(created._id);
-          }
-        }
-
-        for (const sid of desiredSecretIds) {
-          if (!currentSecretIds.includes(sid)) {
-            await client.put(`/function/${fnId}/secret/${sid}`);
-          }
-        }
-        for (const sid of currentSecretIds) {
-          if (!desiredSecretIds.includes(sid)) {
-            await client.delete(`/function/${fnId}/secret/${sid}`);
-          }
-        }
       }
 
       fn = (await client.get(`/function/${fnId}`)) as SpicaFunction;
