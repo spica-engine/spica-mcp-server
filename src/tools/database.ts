@@ -69,12 +69,6 @@ export function registerDatabaseTools(
           .boolean()
           .optional()
           .describe("Enable document history tracking. Default: false"),
-        readOnly: z
-          .boolean()
-          .optional()
-          .describe(
-            "When true, data of this bucket cannot be edited on the bucket-data page",
-          ),
         category: z
           .string()
           .optional()
@@ -93,12 +87,12 @@ export function registerDatabaseTools(
           read: z
             .string()
             .describe(
-              "ACL expression for read access. Example: 'document.owner==auth._id' (users can only read their own data). Default: 'true==true'",
+              "ACL expression for read access. Runs for only users. Example: 'document.owner==auth._id' (users can only read their own data). Default: 'true==true'",
             ),
           write: z
             .string()
             .describe(
-              "ACL expression for write access. Example: 'document.owner==auth._id' (users can only write their own data). Default: 'true==true'",
+              "ACL expression for write access. Runs for only users. Example: 'document.owner==auth._id' (users can only write their own data). Default: 'true==true'",
             ),
         }),
         documentSettings: z

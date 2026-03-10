@@ -28,10 +28,6 @@ const BucketPropertySchema: z.ZodType = z.lazy(() =>
     title: z.string().optional().describe("Display title of the field"),
     description: z.string().optional().describe("Description of the field"),
     default: z.any().optional().describe("Default value for the field"),
-    readOnly: z
-      .boolean()
-      .optional()
-      .describe("When true, field value cannot be modified after creation"),
     examples: z
       .array(z.any())
       .optional()
@@ -139,32 +135,13 @@ const BucketPropertySchema: z.ZodType = z.lazy(() =>
         "GeoJSON geometry type. Only for type 'location'. Default: 'Point'",
       ),
 
-    // Per-field options
-    options: z
-      .object({
-        translate: z
-          .boolean()
-          .optional()
-          .describe(
-            "When true, field value can be stored in multiple languages",
-          ),
-        history: z
-          .boolean()
-          .optional()
-          .describe("When true, change history is tracked for this field"),
-      })
-      .optional()
-      .describe("Per-field options for translation and history tracking"),
-
-    // Format & ACL
-    format: z
-      .string()
-      .optional()
-      .describe("String format hint (e.g. 'date-time', 'email', 'uri')"),
+    // ACL
     acl: z
       .string()
       .optional()
-      .describe("Per-field ACL expression to control access"),
+      .describe(
+        "Per-field ACL expression to hide/show values. Example: 'false==true' (users cannot see this field, often used for sensitive data)",
+      ),
   }),
 );
 
