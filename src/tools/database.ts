@@ -58,8 +58,16 @@ export function registerDatabaseTools(
           .optional()
           .describe("Array of required field names"),
         acl: z.object({
-          read: z.string().describe("ACL expression for read access"),
-          write: z.string().describe("ACL expression for write access"),
+          read: z
+            .string()
+            .describe(
+              "ACL expression for read access. Example:'document.owner==auth._id'(users can only read their own data). Default 'true==true'.",
+            ),
+          write: z
+            .string()
+            .describe(
+              "ACL expression for write access. Example:'document.owner==auth._id'(users can only write their own data). Default 'true==true'.",
+            ),
         }),
         documentSettings: z
           .object({
@@ -70,10 +78,19 @@ export function registerDatabaseTools(
           .describe("Document count limits and overflow behaviour"),
         indexes: z
           .array(
-            z.object({
-              definition: z.record(z.any()),
-              options: z.record(z.any()).optional(),
-            }),
+            z
+              .object({
+                definition: z
+                  .record(z.any())
+                  .describe("MongoDB index definition object"),
+                options: z
+                  .record(z.any())
+                  .optional()
+                  .describe("MongoDB index options object"),
+              })
+              .describe(
+                "MongoDB index definition with 'definition' and optional 'options'",
+              ),
           )
           .optional()
           .describe("Custom database indexes"),
