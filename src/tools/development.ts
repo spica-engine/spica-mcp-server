@@ -20,8 +20,6 @@ export function registerDevelopmentTools(
   client: SpicaClient,
   triggerInfo: TriggerSchemaResult,
 ): { saveFunctionTool: RegisteredTool } {
-  const runtimeNames = triggerInfo.runtimes.map((r) => r.language).join(", ");
-
   // ── list_functions ────────────────────────────────────────────────────
   server.registerTool(
     "list_functions",
@@ -115,10 +113,8 @@ export function registerDevelopmentTools(
             `Execution timeout in seconds. Default: ${triggerInfo.timeout}`,
           ),
         language: z
-          .string()
-          .describe(
-            `Programming language. Available runtimes: ${runtimeNames}`,
-          ),
+          .enum(["javascript", "typescript"])
+          .describe("Programming language"),
         env_vars: z
           .array(
             z.object({

@@ -165,7 +165,7 @@ export const IdentityListOutputSchema = {
 
 export const UserOutputSchema = {
   _id: ObjectId,
-  identifier: z.string().optional(),
+  username: z.string().optional(),
   policies: z.array(z.string()).optional(),
 };
 
@@ -198,6 +198,7 @@ export const StorageObjectListOutputSchema = {
 export const ActivityOutputSchema = {
   _id: ObjectId,
   identifier: z.string().optional(),
+  username: z.string().optional(),
   action: z.number().optional(),
   resource: z.array(z.string()).optional(),
   created_at: z.string().optional(),
