@@ -28,11 +28,6 @@ const BucketPropertySchema: z.ZodType = z.lazy(() =>
     title: z.string().optional().describe("Display title of the field"),
     description: z.string().optional().describe("Description of the field"),
     default: z.any().optional().describe("Default value for the field"),
-    examples: z
-      .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
-      .optional()
-      .describe("Example values for this field"),
-
     // Number constraints
     maximum: z
       .number()

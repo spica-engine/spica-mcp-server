@@ -34,6 +34,7 @@ export function registerAuditingTools(
         skip: z.number().int().optional().describe("Documents to skip"),
         limit: z.number().int().optional().describe("Max documents to return"),
       }),
+      outputSchema: z.object(ActivityListOutputSchema),
     },
     async ({
       identifier,

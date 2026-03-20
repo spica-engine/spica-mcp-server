@@ -1,14 +1,31 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
 
-// The real API returns options as a JSON Schema object, not an array
-export interface EnqueuerOptionProperty {
-  type?: string;
+// Recursive JSON Schema-like interface matching the real API enqueuer options
+export interface JsonSchemaProperty {
+  type?: string | string[];
   title?: string;
   description?: string;
-  enum?: string[];
-  items?: { type?: string; enum?: string[] };
+  enum?: unknown[];
+  const?: unknown;
+  items?: JsonSchemaProperty;
   default?: unknown;
+  properties?: Record<string, JsonSchemaProperty>;
+  required?: string[];
+  additionalProperties?: boolean | JsonSchemaProperty;
+  pattern?: string;
+  minItems?: number;
+  minLength?: number;
+  minimum?: number;
+  maximum?: number;
+  examples?: unknown[];
+  uniqueItems?: boolean;
+  allOf?: JsonSchemaProperty[];
+  anyOf?: JsonSchemaProperty[];
+  oneOf?: JsonSchemaProperty[];
+  if?: JsonSchemaProperty;
+  then?: JsonSchemaProperty;
+  else?: JsonSchemaProperty;
 }
 
 export interface EnqueuerOptions {
@@ -17,8 +34,9 @@ export interface EnqueuerOptions {
   description?: string;
   type?: string;
   required?: string[];
-  properties?: Record<string, EnqueuerOptionProperty>;
+  properties?: Record<string, JsonSchemaProperty>;
   additionalProperties?: boolean;
+  allOf?: JsonSchemaProperty[];
 }
 
 export interface Enqueuer {
@@ -49,58 +67,78 @@ export interface TriggerSchemaResult {
   fingerprint: string;
 }
 
-function propertyToZod(name: string, prop: EnqueuerOptionProperty): z.ZodType {
+function jsonSchemaToZod(name: string, prop: JsonSchemaProperty): z.ZodType {
   const label = prop.description ?? prop.title ?? name;
 
-  if (prop.enum && prop.enum.length > 0) {
-    const literals = prop.enum.map((v) => z.literal(v));
+  // Handle const values
+  if (prop.const !== undefined && prop.const !== null) {
+    return z.literal(prop.const as string | number | boolean).describe(label);
+  }
+
+  // Handle enum values (filter out nulls for zod literals)
+  const validEnumValues = (prop.enum ?? []).filter(
+    (v): v is string | number | boolean => v !== null && v !== undefined,
+  );
+  if (validEnumValues.length > 0) {
+    const literals = validEnumValues.map((v) =>
+      z.literal(v as string | number | boolean),
+    );
     return (
       literals.length === 1
         ? literals[0]
         : z.union(
             literals as [
-              z.ZodLiteral<string>,
-              z.ZodLiteral<string>,
-              ...z.ZodLiteral<string>[],
+              z.ZodLiteral<string | number | boolean>,
+              z.ZodLiteral<string | number | boolean>,
+              ...z.ZodLiteral<string | number | boolean>[],
             ],
           )
     ).describe(label);
   }
 
-  switch (prop.type) {
+  // If enum exists but all values are null/undefined, fall back to the declared type
+  const resolvedType = Array.isArray(prop.type) ? prop.type[0] : prop.type;
+
+  switch (resolvedType) {
     case "string":
       return z.string().describe(label);
+
     case "boolean":
       return z.boolean().describe(label);
+
     case "number":
     case "integer":
       return z.number().describe(label);
+
+    case "object": {
+      if (prop.properties) {
+        const requiredSet = new Set(prop.required ?? []);
+        const shape: Record<string, z.ZodType> = {};
+        for (const [key, subProp] of Object.entries(prop.properties)) {
+          const zodType = jsonSchemaToZod(key, subProp);
+          shape[key] = requiredSet.has(key) ? zodType : zodType.optional();
+        }
+        return z.object(shape).describe(label);
+      }
+      // Object with additionalProperties but no fixed properties
+      if (
+        prop.additionalProperties &&
+        typeof prop.additionalProperties === "object"
+      ) {
+        const valSchema = jsonSchemaToZod("value", prop.additionalProperties);
+        return z.record(valSchema).describe(label);
+      }
+      return z.record(z.any()).describe(label);
+    }
+
     case "array": {
       let itemSchema: z.ZodType = z.any();
       if (prop.items) {
-        if (prop.items.enum && prop.items.enum.length > 0) {
-          const itemLiterals = prop.items.enum.map((v) => z.literal(v));
-          itemSchema =
-            itemLiterals.length === 1
-              ? itemLiterals[0]
-              : z.union(
-                  itemLiterals as [
-                    z.ZodLiteral<string>,
-                    z.ZodLiteral<string>,
-                    ...z.ZodLiteral<string>[],
-                  ],
-                );
-        } else if (prop.items.type === "string") {
-          itemSchema = z.string();
-        } else if (
-          prop.items.type === "number" ||
-          prop.items.type === "integer"
-        ) {
-          itemSchema = z.number();
-        }
+        itemSchema = jsonSchemaToZod("item", prop.items);
       }
       return z.array(itemSchema).describe(label);
     }
+
     default:
       return z.any().describe(label);
   }
@@ -112,7 +150,7 @@ function buildSingleTriggerSchema(enqueuer: Enqueuer): z.ZodType {
   const optionsShape: Record<string, z.ZodType> = {};
 
   for (const [key, prop] of Object.entries(properties)) {
-    const zodType = propertyToZod(key, prop);
+    const zodType = jsonSchemaToZod(key, prop);
     optionsShape[key] = required.has(key) ? zodType : zodType.optional();
   }
 
@@ -156,10 +194,15 @@ export function buildTriggerSchemas(
     .map((e) => {
       const props = e.options?.properties ?? {};
       const propList = Object.entries(props)
-        .map(
-          ([k, p]) =>
-            `${k} (${p.type ?? "any"}${p.enum ? `: ${p.enum.join(" | ")}` : ""})`,
-        )
+        .map(([k, p]) => {
+          const resolvedType = Array.isArray(p.type)
+            ? p.type[0]
+            : (p.type ?? "any");
+          const validEnums = (p.enum ?? []).filter(
+            (v) => v !== null && v !== undefined,
+          );
+          return `${k} (${resolvedType}${validEnums.length ? `: ${validEnums.join(" | ")}` : ""})`;
+        })
         .join(", ");
       return (
         `- '${e.description.name}': ${e.description.description}` +
