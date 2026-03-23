@@ -1,6 +1,6 @@
 # @spica/mcp
 
-MCP (Model Context Protocol) server that enables AI agents to interact with [Spica](https://spica.com) servers — manage databases, serverless functions, storage, authentication, auditing, debugging and version control.
+MCP (Model Context Protocol) server that enables AI agents to interact with Spica servers — manage databases, serverless functions, storage, authentication, auditing, debugging and version control.
 
 ## Prerequisites
 
