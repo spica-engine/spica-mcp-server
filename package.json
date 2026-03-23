@@ -1,18 +1,36 @@
 {
-  "name": "spica-mcp-server",
+  "name": "@spica/mcp",
   "version": "1.0.0",
-  "description": "Nodejs MCP server for agents to interact with the Spica servers to Manage resources, Auditing, Debugging etc.",
+  "description": "MCP server for AI agents to interact with Spica servers — manage resources, databases, functions, storage, auditing, debugging and more.",
   "license": "ISC",
-  "author": "",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "spica-mcp-server": "dist/index.js"
+    "spica-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "mcp",
+    "spica",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spicaengine/spica-mcp-server.git"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --target node22 --out-dir dist --clean",
     "prestart": "npm run build",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
