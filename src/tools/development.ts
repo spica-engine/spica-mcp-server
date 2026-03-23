@@ -294,6 +294,7 @@ export function registerDevelopmentTools(
       title: "Save Function Dependencies",
       description:
         "Installs one or more npm packages as dependencies for a function.",
+      outputSchema: SuccessMessageOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         packages: z
@@ -302,14 +303,19 @@ export function registerDevelopmentTools(
       }),
     },
     async ({ functionId, packages }) => {
-      const result = await client.post(`/function/${functionId}/dependencies`, {
+      await client.post(`/function/${functionId}/dependencies`, {
         name: packages,
       });
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+          {
+            type: "text" as const,
+            text: `Successfully installed packages: ${packages.join(", ")}`,
+          },
         ],
-        structuredContent: result as Record<string, unknown>,
+        structuredContent: {
+          message: `Successfully installed packages: ${packages.join(", ")}`,
+        },
       };
     },
   );
