@@ -5,9 +5,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import { BucketPropertySchema } from "../schemas/bucket";
 import {
-  BucketOutputSchema,
   BucketListOutputSchema,
   BucketDocumentListOutputSchema,
+  ExportBucketDataOutputSchema,
+  ImportBucketDataOutputSchema,
 } from "../schemas/outputs";
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
@@ -353,8 +354,11 @@ export function registerDatabaseTools(
     {
       title: "Export Bucket Data",
       description:
-        "Exports documents from a bucket to a JSON or CSV file. Efficient for large dataset migrations. Supports filter, limit, skip, sort, and paginate options.",
+        "Fetches documents from a bucket and writes them to a local JSON or CSV file. " +
+        "Supports filter, limit, skip, sort. " +
+        "Efficient way for large dataset exports.",
       annotations: { readOnlyHint: false },
+      outputSchema: ExportBucketDataOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID to export data from"),
         format: z
@@ -377,10 +381,6 @@ export function registerDatabaseTools(
           .string()
           .optional()
           .describe("Filter expression or JSON object to filter documents"),
-        paginate: z
-          .boolean()
-          .optional()
-          .describe("When true, includes meta.total in response"),
         limit: z.number().int().optional().describe("Max documents to return"),
         skip: z.number().int().optional().describe("Documents to skip"),
         sort: z
@@ -399,7 +399,6 @@ export function registerDatabaseTools(
       directory,
       fileName,
       filter,
-      paginate,
       limit,
       skip,
       sort,
@@ -407,7 +406,6 @@ export function registerDatabaseTools(
     }) => {
       const query: Record<string, unknown> = {
         filter,
-        paginate,
         limit,
         skip,
         sort,
@@ -416,17 +414,7 @@ export function registerDatabaseTools(
       const headers: Record<string, string> = {};
       if (language) headers["accept-language"] = language;
 
-      const data = await client.get(`/bucket/${bucketId}/data`, query, headers);
-
-      // Normalise: when paginate=true the API wraps in { data, meta }
-      const rows: Record<string, unknown>[] = Array.isArray(data)
-        ? (data as Record<string, unknown>[])
-        : Array.isArray((data as Record<string, unknown>)["data"])
-          ? ((data as Record<string, unknown>)["data"] as Record<
-              string,
-              unknown
-            >[])
-          : [];
+      const rows = await client.get(`/bucket/${bucketId}/data`, query, headers) as Record<string, unknown>[]
 
       const baseName =
         fileName ??
@@ -465,7 +453,10 @@ export function registerDatabaseTools(
     {
       title: "Import Bucket Data",
       description:
-        "Imports bucket-data from a JSON or CSV file. Efficient for large dataset migrations. Accept JSON and CSV file types.",
+        "Reads a local JSON or CSV file and inserts its documents into a bucket in parallel batches. " +
+        "Use concurrency to control how many inserts run at once (default 50). " +
+        "Efficient way for large dataset imports.",
+      outputSchema: ImportBucketDataOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID to import data into"),
         filePath: z
@@ -473,9 +464,19 @@ export function registerDatabaseTools(
           .describe(
             "Absolute or relative path to the JSON or CSV file to import",
           ),
+        concurrency: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .default(50)
+          .optional()
+          .describe(
+            "Number of documents to insert in parallel per batch. Default: 50. Lower this if you encounter network errors.",
+          ),
       }),
     },
-    async ({ bucketId, filePath: inputFilePath }) => {
+    async ({ bucketId, filePath: inputFilePath, concurrency = 50 }) => {
       const resolvedPath = path.resolve(inputFilePath);
       const ext = path.extname(resolvedPath).toLowerCase();
 
@@ -495,45 +496,55 @@ export function registerDatabaseTools(
         | { id: string; status: "success"; insertedId: string }
         | { id: string; status: "failure"; error: string };
 
-      const results = await Promise.allSettled(
-        rows.map((doc, index) => {
-          const rowId =
-            typeof doc["_id"] === "string" && doc["_id"]
-              ? (doc["_id"] as string)
-              : `row:${index}`;
+      const details: InsertResult[] = [];
 
-          return client
-            .post(`/bucket/${bucketId}/data`, doc)
-            .then((inserted) => {
-              const insertedId =
-                typeof (inserted as Record<string, unknown>)["_id"] === "string"
-                  ? ((inserted as Record<string, unknown>)["_id"] as string)
-                  : JSON.stringify(inserted);
-              return {
-                id: rowId,
-                status: "success" as const,
-                insertedId,
-              };
-            })
-            .catch((err: unknown) => {
-              return {
-                id: rowId,
-                status: "failure" as const,
-                error: err instanceof Error ? err.message : String(err),
-              };
-            });
-        }),
-      );
+      // Process rows in batches of `concurrency` to avoid overwhelming the server
+      for (let i = 0; i < rows.length; i += concurrency) {
+        const batch = rows.slice(i, i + concurrency);
+        const batchResults = await Promise.allSettled(
+          batch.map((doc, batchIndex) => {
+            const globalIndex = i + batchIndex;
+            const rowId =
+              typeof doc["_id"] === "string" && doc["_id"]
+                ? (doc["_id"] as string)
+                : `row:${globalIndex}`;
 
-      const details: InsertResult[] = results.map((r) =>
-        r.status === "fulfilled"
-          ? r.value
-          : {
-              id: "unknown",
-              status: "failure" as const,
-              error: String((r as PromiseRejectedResult).reason),
-            },
-      );
+            return client
+              .post(`/bucket/${bucketId}/data`, doc)
+              .then((inserted) => {
+                const insertedId =
+                  typeof (inserted as Record<string, unknown>)["_id"] ===
+                  "string"
+                    ? ((inserted as Record<string, unknown>)["_id"] as string)
+                    : JSON.stringify(inserted);
+                return {
+                  id: rowId,
+                  status: "success" as const,
+                  insertedId,
+                };
+              })
+              .catch((err: unknown) => {
+                return {
+                  id: rowId,
+                  status: "failure" as const,
+                  error: err instanceof Error ? err.message : String(err),
+                };
+              });
+          }),
+        );
+
+        for (const r of batchResults) {
+          details.push(
+            r.status === "fulfilled"
+              ? r.value
+              : {
+                  id: "unknown",
+                  status: "failure" as const,
+                  error: String((r as PromiseRejectedResult).reason),
+                },
+          );
+        }
+      }
 
       const successCount = details.filter((d) => d.status === "success").length;
       const failureCount = details.filter((d) => d.status === "failure").length;
