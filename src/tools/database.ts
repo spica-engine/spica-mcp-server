@@ -1,4 +1,6 @@
 import { z } from "zod";
+import fs from "node:fs";
+import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import { BucketPropertySchema } from "../schemas/bucket";
@@ -7,6 +9,97 @@ import {
   BucketListOutputSchema,
   BucketDocumentListOutputSchema,
 } from "../schemas/outputs";
+
+// ── CSV helpers ───────────────────────────────────────────────────────────────
+
+function csvEscape(val: unknown): string {
+  const s =
+    val === null || val === undefined
+      ? ""
+      : typeof val === "object"
+        ? JSON.stringify(val)
+        : String(val);
+  if (
+    s.includes(",") ||
+    s.includes('"') ||
+    s.includes("\n") ||
+    s.includes("\r")
+  ) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.map(csvEscape).join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => csvEscape(row[h])).join(","));
+  }
+  return lines.join("\n");
+}
+
+function parseCsvValue(v: string): unknown {
+  if (v === "" || v === "null") return null;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  const n = Number(v);
+  if (v.trim() !== "" && !isNaN(n)) return n;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}
+
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        fields.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  fields.push(cur);
+  return fields;
+}
+
+function fromCsv(content: string): Record<string, unknown>[] {
+  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]);
+  const rows: Record<string, unknown>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvLine(lines[i]);
+    const obj: Record<string, unknown> = {};
+    for (let j = 0; j < headers.length; j++) {
+      obj[headers[j]] = parseCsvValue(values[j] ?? "");
+    }
+    rows.push(obj);
+  }
+  return rows;
+}
 
 export function registerDatabaseTools(
   server: McpServer,
@@ -250,6 +343,213 @@ export function registerDatabaseTools(
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
         ],
         structuredContent: result as Record<string, unknown>,
+      };
+    },
+  );
+
+  // ── export_bucket_data ────────────────────────────────────────────────
+  server.registerTool(
+    "export_bucket_data",
+    {
+      title: "Export Bucket Data",
+      description:
+        "Exports documents from a bucket to a JSON or CSV file. Efficient for large dataset migrations. Supports filter, limit, skip, sort, and paginate options.",
+      annotations: { readOnlyHint: false },
+      inputSchema: z.object({
+        bucketId: z.string().describe("Bucket ID to export data from"),
+        format: z
+          .enum(["json", "csv"])
+          .default("json")
+          .describe("Output file format. Default: json"),
+        directory: z
+          .string()
+          .optional()
+          .describe(
+            "Directory path to write the file. Defaults to the current working directory.",
+          ),
+        fileName: z
+          .string()
+          .optional()
+          .describe(
+            "File name without extension. Defaults to '{bucketId}_{timestamp}'.",
+          ),
+        filter: z
+          .string()
+          .optional()
+          .describe("Filter expression or JSON object to filter documents"),
+        paginate: z
+          .boolean()
+          .optional()
+          .describe("When true, includes meta.total in response"),
+        limit: z.number().int().optional().describe("Max documents to return"),
+        skip: z.number().int().optional().describe("Documents to skip"),
+        sort: z
+          .string()
+          .optional()
+          .describe('JSON sort object, e.g. {"created_at":-1}'),
+        language: z
+          .string()
+          .optional()
+          .describe("Accept-Language for translated documents, e.g. en_US"),
+      }),
+    },
+    async ({
+      bucketId,
+      format,
+      directory,
+      fileName,
+      filter,
+      paginate,
+      limit,
+      skip,
+      sort,
+      language,
+    }) => {
+      const query: Record<string, unknown> = {
+        filter,
+        paginate,
+        limit,
+        skip,
+        sort,
+      };
+
+      const headers: Record<string, string> = {};
+      if (language) headers["accept-language"] = language;
+
+      const data = await client.get(`/bucket/${bucketId}/data`, query, headers);
+
+      // Normalise: when paginate=true the API wraps in { data, meta }
+      const rows: Record<string, unknown>[] = Array.isArray(data)
+        ? (data as Record<string, unknown>[])
+        : Array.isArray((data as Record<string, unknown>)["data"])
+          ? ((data as Record<string, unknown>)["data"] as Record<
+              string,
+              unknown
+            >[])
+          : [];
+
+      const baseName =
+        fileName ??
+        `${bucketId}_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      const dir = directory ?? process.cwd();
+      const filePath = path.join(dir, `${baseName}.${format}`);
+
+      let fileContent: string;
+      if (format === "csv") {
+        fileContent = toCsv(rows);
+      } else {
+        fileContent = JSON.stringify(rows, null, 2);
+      }
+
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, fileContent, "utf-8");
+
+      const summary = {
+        filePath,
+        format,
+        totalDocuments: rows.length,
+      };
+
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(summary, null, 2) },
+        ],
+        structuredContent: summary,
+      };
+    },
+  );
+
+  // ── import_bucket_data ────────────────────────────────────────────────
+  server.registerTool(
+    "import_bucket_data",
+    {
+      title: "Import Bucket Data",
+      description:
+        "Imports bucket-data from a JSON or CSV file. Efficient for large dataset migrations. Accept JSON and CSV file types.",
+      inputSchema: z.object({
+        bucketId: z.string().describe("Bucket ID to import data into"),
+        filePath: z
+          .string()
+          .describe(
+            "Absolute or relative path to the JSON or CSV file to import",
+          ),
+      }),
+    },
+    async ({ bucketId, filePath: inputFilePath }) => {
+      const resolvedPath = path.resolve(inputFilePath);
+      const ext = path.extname(resolvedPath).toLowerCase();
+
+      const content = fs.readFileSync(resolvedPath, "utf-8");
+
+      let rows: Record<string, unknown>[];
+      if (ext === ".csv") {
+        rows = fromCsv(content);
+      } else {
+        const parsed: unknown = JSON.parse(content);
+        rows = Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>[])
+          : [parsed as Record<string, unknown>];
+      }
+
+      type InsertResult =
+        | { id: string; status: "success"; insertedId: string }
+        | { id: string; status: "failure"; error: string };
+
+      const results = await Promise.allSettled(
+        rows.map((doc, index) => {
+          const rowId =
+            typeof doc["_id"] === "string" && doc["_id"]
+              ? (doc["_id"] as string)
+              : `row:${index}`;
+
+          return client
+            .post(`/bucket/${bucketId}/data`, doc)
+            .then((inserted) => {
+              const insertedId =
+                typeof (inserted as Record<string, unknown>)["_id"] === "string"
+                  ? ((inserted as Record<string, unknown>)["_id"] as string)
+                  : JSON.stringify(inserted);
+              return {
+                id: rowId,
+                status: "success" as const,
+                insertedId,
+              };
+            })
+            .catch((err: unknown) => {
+              return {
+                id: rowId,
+                status: "failure" as const,
+                error: err instanceof Error ? err.message : String(err),
+              };
+            });
+        }),
+      );
+
+      const details: InsertResult[] = results.map((r) =>
+        r.status === "fulfilled"
+          ? r.value
+          : {
+              id: "unknown",
+              status: "failure" as const,
+              error: String((r as PromiseRejectedResult).reason),
+            },
+      );
+
+      const successCount = details.filter((d) => d.status === "success").length;
+      const failureCount = details.filter((d) => d.status === "failure").length;
+
+      const summary = {
+        totalProcessed: rows.length,
+        successCount,
+        failureCount,
+        results: details,
+      };
+
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(summary, null, 2) },
+        ],
+        structuredContent: summary,
       };
     },
   );
