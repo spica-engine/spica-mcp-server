@@ -87,19 +87,57 @@ function parseCsvLine(line: string): string[] {
 }
 
 function fromCsv(content: string): Record<string, unknown>[] {
-  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (lines.length < 2) return [];
-  const headers = parseCsvLine(lines[0]);
-  const rows: Record<string, unknown>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCsvLine(lines[i]);
+  // Stream-parse character by character to correctly handle RFC4180 quoted
+  // fields that may contain embedded newlines.
+  const records: string[][] = [];
+  let cur = "";
+  let inQuotes = false;
+  let row: string[] = [];
+
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    const next = content[i + 1];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (next === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(cur);
+        cur = "";
+      } else if (ch === "\n" || (ch === "\r" && next === "\n")) {
+        if (ch === "\r") i++;
+        row.push(cur);
+        cur = "";
+        if (row.some((f) => f !== "")) records.push(row);
+        row = [];
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  // Flush last field/row
+  row.push(cur);
+  if (row.some((f) => f !== "")) records.push(row);
+
+  if (records.length < 2) return [];
+  const headers = records[0];
+  return records.slice(1).map((values) => {
     const obj: Record<string, unknown> = {};
     for (let j = 0; j < headers.length; j++) {
       obj[headers[j]] = parseCsvValue(values[j] ?? "");
     }
-    rows.push(obj);
-  }
-  return rows;
+    return obj;
+  });
 }
 
 export function registerDatabaseTools(
@@ -416,11 +454,14 @@ export function registerDatabaseTools(
 
       const rows = await client.get(`/bucket/${bucketId}/data`, query, headers) as Record<string, unknown>[]
 
-      const baseName =
+      // Strip any directory components from fileName to prevent path traversal.
+      // Resolve dir to an absolute path so the returned filePath is always absolute.
+      const safeName = path.basename(
         fileName ??
-        `${bucketId}_${new Date().toISOString().replace(/[:.]/g, "-")}`;
-      const dir = directory ?? process.cwd();
-      const filePath = path.join(dir, `${baseName}.${format}`);
+        `${bucketId}_${new Date().toISOString().replace(/[:.]/g, "-")}`,
+      );
+      const dir = path.resolve(directory ?? process.cwd());
+      const filePath = path.join(dir, `${safeName}.${format}`);
 
       let fileContent: string;
       if (format === "csv") {
@@ -433,7 +474,7 @@ export function registerDatabaseTools(
       fs.writeFileSync(filePath, fileContent, "utf-8");
 
       const summary = {
-        filePath,
+        filePath: path.resolve(filePath),
         format,
         totalDocuments: rows.length,
       };
@@ -482,11 +523,22 @@ export function registerDatabaseTools(
 
       const content = fs.readFileSync(resolvedPath, "utf-8");
 
+      if (ext !== ".json" && ext !== ".csv") {
+        throw new Error(
+          `Unsupported file extension "${ext}". Only .json and .csv are accepted.`,
+        );
+      }
+
       let rows: Record<string, unknown>[];
       if (ext === ".csv") {
         rows = fromCsv(content);
       } else {
-        const parsed: unknown = JSON.parse(content);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(content);
+        } catch {
+          throw new Error("Failed to parse JSON file: invalid JSON syntax.");
+        }
         rows = Array.isArray(parsed)
           ? (parsed as Record<string, unknown>[])
           : [parsed as Record<string, unknown>];
