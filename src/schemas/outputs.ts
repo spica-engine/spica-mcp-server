@@ -59,6 +59,32 @@ export const PaginatedBucketDataOutputSchema = {
   data: z.array(z.record(z.any())),
 };
 
+export const ExportBucketDataOutputSchema = {
+  filePath: z.string().describe("Absolute path to the written file"),
+  format: z.enum(["json", "csv"]),
+  totalDocuments: z.number().int().describe("Number of documents written to the file"),
+};
+
+const ImportResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    id: z.string(),
+    status: z.literal("success"),
+    insertedId: z.string(),
+  }),
+  z.object({
+    id: z.string(),
+    status: z.literal("failure"),
+    error: z.string(),
+  }),
+]);
+
+export const ImportBucketDataOutputSchema = {
+  totalProcessed: z.number().int(),
+  successCount: z.number().int(),
+  failureCount: z.number().int(),
+  results: z.array(ImportResultSchema).describe("Per-document insert result"),
+};
+
 // ─── Function ─────────────────────────────────────────────────────────────────
 
 const TriggerOutputSchema = z.object({
