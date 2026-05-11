@@ -20,8 +20,8 @@ const PolicyStatementSchema = z.object({
       z.string(),
       z.array(z.string()),
       z.object({
-        include: z.string().optional(),
-        exclude: z.string().optional(),
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional(),
       }),
     ])
     .optional()
