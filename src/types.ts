@@ -3,7 +3,7 @@
 export interface PolicyStatement {
   action: string;
   module: string;
-  resource?: string | string[] | { include?: string; exclude?: string };
+  resource?: { include: string[]; exclude: string[] };
 }
 
 export interface PolicyBase {

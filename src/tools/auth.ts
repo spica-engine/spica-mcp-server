@@ -12,21 +12,168 @@ import {
   UserListOutputSchema,
 } from "../schemas/outputs";
 
-const PolicyStatementSchema = z.object({
-  action: z.string().describe("Action identifier"),
-  module: z.string().describe("Module name"),
-  resource: z
-    .union([
-      z.string(),
-      z.array(z.string()),
-      z.object({
-        include: z.string().optional(),
-        exclude: z.string().optional(),
-      }),
-    ])
-    .optional()
-    .describe("Resource scope"),
+// ── Resource primitive validators ─────────────────────────────────────────────
+// Plain resource id: no forward-slash, no asterisk, no whitespace
+const PlainId = z.string().regex(/^[^/*\s]+$/);
+// Two-segment wildcard exclude item: "*/plain-id"
+const StarSlashId = z.string().regex(/^\*\/[^/*\s]+$/);
+
+// Single-segment resource:
+//   { include: ["*"],      exclude: plainId[]   }  — wildcard include, explicit excludes
+//   { include: plainId+,   exclude: []          }  — explicit include, no excludes
+const SingleSegmentResource = z.union([
+  z.object({ include: z.tuple([z.literal("*")]), exclude: z.array(PlainId)          }),
+  z.object({ include: z.array(PlainId).min(1),   exclude: z.array(z.string()).max(0) }),
+]);
+
+// Glob resource (storage:browse): single glob path (must end with *), any non-empty strings for exclude
+const GlobSegmentResource = z.object({
+  include: z.array(z.string().regex(/\*$/)).max(1),
+  exclude: z.array(z.string().min(1)),
 });
+
+// Two-segment resource:
+//   { include: ["*/*"],    exclude: starSlashId[] }  — wildcard include, explicit excludes
+//   { include: starSlashId+, exclude: []          }  — explicit include, no excludes
+const TwoSegmentResource = z.union([
+  z.object({ include: z.tuple([z.literal("*/*")]), exclude: z.array(StarSlashId)      }),
+  z.object({ include: z.array(StarSlashId).min(1), exclude: z.array(z.string()).max(0) }),
+]);
+
+function noRes<A extends string, M extends string>(action: A, module: M) {
+  return z.object({ action: z.literal(action), module: z.literal(module) }).strict();
+}
+function singleRes<A extends string, M extends string>(action: A, module: M) {
+  return z.object({ action: z.literal(action), module: z.literal(module), resource: SingleSegmentResource });
+}
+function twoRes<A extends string, M extends string>(action: A, module: M) {
+  return z.object({ action: z.literal(action), module: z.literal(module), resource: TwoSegmentResource });
+}
+function globRes<A extends string, M extends string>(action: A, module: M) {
+  return z.object({ action: z.literal(action), module: z.literal(module), resource: GlobSegmentResource });
+}
+
+const PolicyStatementSchema = z.discriminatedUnion("action", [
+  // ── NO_RESOURCE: resource field must not be present ───────────────────────
+  noRes("activity:index",             "activity"),
+  noRes("activity:delete",            "activity"),
+  noRes("asset:index",                "asset"),
+  noRes("asset:show",                 "asset"),
+  noRes("asset:download",             "asset"),
+  noRes("asset:install",              "asset"),
+  noRes("asset:delete",               "asset"),
+  noRes("asset:export",               "asset"),
+  noRes("bucket:create",              "bucket"),
+  noRes("dashboard:create",           "dashboard"),
+  noRes("env-var:create",             "env-var"),
+  noRes("function:create",            "function"),
+  noRes("function:logs:delete",       "function:logs"),
+  noRes("function:logs:index",        "function:logs"),
+  noRes("passport:apikey:create",     "passport:apikey"),
+  noRes("passport:identity:create",   "passport:identity"),
+  noRes("passport:identity:profile",  "passport:identity"),
+  noRes("passport:policy:create",     "passport:policy"),
+  noRes("passport:strategy:insert",   "passport:strategy"),
+  noRes("passport:user:create",       "passport:user"),
+  noRes("passport:user:profile",      "passport:user"),
+  noRes("secret:create",              "secret"),
+  noRes("storage:create",             "storage"),
+  noRes("versioncontrol:update",      "versioncontrol"),
+  noRes("versioncontrol:show",        "versioncontrol"),
+  noRes("webhook:create",             "webhook"),
+  noRes("webhook:logs:delete",        "webhook:logs"),
+  noRes("webhook:logs:index",         "webhook:logs"),
+  // ── SINGLE_SEGMENT: resource is a single-segment id or wildcard ───────────
+  singleRes("bucket:stream",                 "bucket"),
+  singleRes("bucket:index",                  "bucket"),
+  singleRes("bucket:show",                   "bucket"),
+  singleRes("bucket:update",                 "bucket"),
+  singleRes("bucket:delete",                 "bucket"),
+  singleRes("bucket:data:stream",            "bucket:data"),
+  singleRes("bucket:data:index",             "bucket:data"),
+  singleRes("bucket:data:show",              "bucket:data"),
+  singleRes("bucket:data:create",            "bucket:data"),
+  singleRes("bucket:data:update",            "bucket:data"),
+  singleRes("bucket:data:delete",            "bucket:data"),
+  singleRes("bucket:data:profile",           "bucket:data"),
+  singleRes("config:index",                  "config"),
+  singleRes("config:show",                   "config"),
+  singleRes("config:update",                 "config"),
+  singleRes("dashboard:index",               "dashboard"),
+  singleRes("dashboard:show",                "dashboard"),
+  singleRes("dashboard:stream",              "dashboard"),
+  singleRes("dashboard:update",              "dashboard"),
+  singleRes("dashboard:delete",              "dashboard"),
+  singleRes("env-var:index",                 "env-var"),
+  singleRes("env-var:show",                  "env-var"),
+  singleRes("env-var:stream",                "env-var"),
+  singleRes("env-var:update",                "env-var"),
+  singleRes("env-var:delete",                "env-var"),
+  singleRes("function:index",                "function"),
+  singleRes("function:show",                 "function"),
+  singleRes("function:stream",               "function"),
+  singleRes("function:update",               "function"),
+  singleRes("function:delete",               "function"),
+  singleRes("passport:apikey:index",         "passport:apikey"),
+  singleRes("passport:apikey:show",          "passport:apikey"),
+  singleRes("passport:apikey:stream",        "passport:apikey"),
+  singleRes("passport:apikey:update",        "passport:apikey"),
+  singleRes("passport:apikey:delete",        "passport:apikey"),
+  singleRes("passport:identity:index",       "passport:identity"),
+  singleRes("passport:identity:show",        "passport:identity"),
+  singleRes("passport:identity:stream",      "passport:identity"),
+  singleRes("passport:identity:update",      "passport:identity"),
+  singleRes("passport:identity:delete",      "passport:identity"),
+  singleRes("passport:policy:index",         "passport:policy"),
+  singleRes("passport:policy:show",          "passport:policy"),
+  singleRes("passport:policy:stream",        "passport:policy"),
+  singleRes("passport:policy:update",        "passport:policy"),
+  singleRes("passport:policy:delete",        "passport:policy"),
+  singleRes("passport:refresh-token:index",  "passport:refresh-token"),
+  singleRes("passport:refresh-token:show",   "passport:refresh-token"),
+  singleRes("passport:refresh-token:stream", "passport:refresh-token"),
+  singleRes("passport:refresh-token:update", "passport:refresh-token"),
+  singleRes("passport:refresh-token:delete", "passport:refresh-token"),
+  singleRes("passport:strategy:index",       "passport:strategy"),
+  singleRes("passport:strategy:show",        "passport:strategy"),
+  singleRes("passport:strategy:update",      "passport:strategy"),
+  singleRes("passport:strategy:delete",      "passport:strategy"),
+  singleRes("passport:user:index",           "passport:user"),
+  singleRes("passport:user:show",            "passport:user"),
+  singleRes("passport:user:stream",          "passport:user"),
+  singleRes("passport:user:update",          "passport:user"),
+  singleRes("passport:user:delete",          "passport:user"),
+  singleRes("preference:show",               "preference"),
+  singleRes("preference:update",             "preference"),
+  singleRes("secret:index",                  "secret"),
+  singleRes("secret:show",                   "secret"),
+  singleRes("secret:stream",                 "secret"),
+  singleRes("secret:update",                 "secret"),
+  singleRes("secret:delete",                 "secret"),
+  singleRes("status:index",                  "status"),
+  singleRes("status:show",                   "status"),
+  singleRes("storage:index",                 "storage"),
+  singleRes("storage:show",                  "storage"),
+  singleRes("storage:update",                "storage"),
+  singleRes("storage:delete",                "storage"),
+  globRes("storage:browse", "storage"),
+  singleRes("webhook:index",  "webhook"),
+  singleRes("webhook:show",   "webhook"),
+  singleRes("webhook:update", "webhook"),
+  singleRes("webhook:delete", "webhook"),
+  // ── TWO_SEGMENT: resource is a two-segment "*/id" path or wildcard ────────
+  twoRes("function:env-var:inject",          "function:env-var"),
+  twoRes("function:env-var:eject",           "function:env-var"),
+  twoRes("function:invoke",                  "function:invoke"),
+  twoRes("function:secret:inject",           "function:secret"),
+  twoRes("function:secret:eject",            "function:secret"),
+  twoRes("passport:apikey:policy:add",       "passport:apikey:policy"),
+  twoRes("passport:apikey:policy:remove",    "passport:apikey:policy"),
+  twoRes("passport:identity:policy:add",     "passport:identity:policy"),
+  twoRes("passport:identity:policy:remove",  "passport:identity:policy"),
+  twoRes("passport:user:policy:add",         "passport:user:policy"),
+  twoRes("passport:user:policy:remove",      "passport:user:policy"),
+]);
 
 const PolicyObjectSchema = z.object({
   _id: z.string().optional().describe("Policy ID. Omit to create new."),
