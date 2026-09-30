@@ -126,22 +126,12 @@ export const FunctionOutputSchema = {
   timeout: z.number(),
   language: z.string(),
   env_vars: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({ _id: z.string(), key: z.string(), value: z.string() }),
-      ]),
-    )
+    .array(z.union([z.string(), z.object(EnvVarOutputSchema).passthrough()]))
     .optional(),
+  // Spica strips secret values when it resolves the relation, so only key metadata comes back.
   secrets: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({ _id: z.string(), key: z.string(), value: z.string() }),
-      ]),
-    )
+    .array(z.union([z.string(), z.object(SecretOutputSchema).passthrough()]))
     .optional(),
-  memoryLimit: z.number().optional(),
   order: z.number().optional(),
 };
 

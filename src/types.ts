@@ -77,8 +77,7 @@ export interface SpicaFunction {
   timeout: number;
   language: string;
   env_vars?: Array<string | { _id: string; key: string; value: string }>;
-  secrets?: Array<string | { _id: string; key: string; value: string }>;
-  memoryLimit?: number;
+  secrets?: Array<string | { _id: string; key: string }>;
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
