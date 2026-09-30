@@ -274,21 +274,6 @@ export const ActivityListOutputSchema = {
   activities: z.array(z.object(ActivityOutputSchema).passthrough()),
 };
 
-// ─── Version Control ──────────────────────────────────────────────────────────
-
-export const VCCommandOutputSchema = {
-  command: z.string(),
-  params: z.record(z.any()).optional(),
-};
-
-export const VCCommandListOutputSchema = {
-  commands: z.array(z.record(z.any())),
-};
-
-export const VCCommandResultOutputSchema = {
-  result: z.any(),
-};
-
 // ─── Profile / Debug ──────────────────────────────────────────────────────────
 
 export const ProfileListOutputSchema = {
