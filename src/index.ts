@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SpicaClient } from "./client";
@@ -24,6 +25,12 @@ if (!SPICA_URL || !SPICA_APIKEY) {
   process.exit(1);
 }
 
+// Resolved at runtime from the published package root so the version reported
+// to MCP clients always matches the npm release, which helps triage bug reports.
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string;
+};
+
 const client = new SpicaClient(SPICA_URL, SPICA_APIKEY);
 
 // Fetch trigger information at startup
@@ -34,7 +41,7 @@ const triggerInfo = buildTriggerSchemas(functionInfo);
 
 const server = new McpServer({
   name: "spica-mcp-server",
-  version: "1.0.0",
+  version,
 });
 
 registerAuthTools(server, client);
