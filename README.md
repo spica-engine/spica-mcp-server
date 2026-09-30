@@ -1,6 +1,6 @@
 # @spica/mcp
 
-MCP (Model Context Protocol) server that enables AI agents to interact with Spica servers — manage databases, serverless functions, storage, authentication, auditing, debugging and version control.
+MCP (Model Context Protocol) server that enables AI agents to interact with Spica servers — manage databases, serverless functions, storage, authentication, auditing and debugging.
 
 ## Prerequisites
 
@@ -28,6 +28,21 @@ The server requires two environment variables:
 | -------------- | ------------------------------------------------------------------------- |
 | `SPICA_URL`    | URL of your Spica server (e.g. `https://my-spica.hq.spicaengine.com/api`) |
 | `SPICA_APIKEY` | API key for authenticating with the Spica server                          |
+
+### Claude Code
+
+Register the server with the `claude` CLI:
+
+```bash
+claude mcp add spica \
+  --env SPICA_URL=https://my-spica.hq.spicaengine.com/api \
+  --env SPICA_APIKEY=your-api-key \
+  -- npx -y @spica/mcp
+```
+
+By default the server is only available in the current project. Add `--scope user` to make it available in all your projects, or `--scope project` to write it to a `.mcp.json` file that can be committed and shared with your team.
+
+Run `claude mcp list` to verify the connection, or `/mcp` inside a Claude Code session.
 
 ### Claude Desktop
 
@@ -90,23 +105,30 @@ Add to your Cursor MCP settings:
 
 ### Authentication
 
-| Tool              | Description                                            |
-| ----------------- | ------------------------------------------------------ |
-| `list_apikeys`    | List all API keys                                      |
-| `save_apikey`     | Create or update an API key                            |
-| `list_identities` | List identities with optional filtering and pagination |
-| `save_identity`   | Create or update an identity                           |
-| `list_policies`   | List all policies                                      |
-| `save_policy`     | Create or update a policy                              |
+| Tool              | Description                                                   |
+| ----------------- | ------------------------------------------------------------- |
+| `list_apikeys`    | List all API keys                                             |
+| `insert_apikey`   | Create an API key                                             |
+| `update_apikey`   | Update an existing API key                                    |
+| `list_identities` | List identities with optional filtering and pagination        |
+| `insert_identity` | Create an identity                                            |
+| `update_identity` | Update an existing identity                                   |
+| `list_policies`   | List access policies with optional filtering and pagination   |
+| `insert_policy`   | Create an access policy                                       |
+| `update_policy`   | Replace an existing access policy                             |
+| `list_users`      | List users with optional filtering, sorting and pagination    |
 
 ### Database
 
-| Tool               | Description                                                                 |
-| ------------------ | --------------------------------------------------------------------------- |
-| `list_buckets`     | List all bucket schemas                                                     |
-| `save_bucket`      | Create or update a bucket schema                                            |
-| `list_bucket_data` | Query documents with filtering, pagination, sorting and relation resolution |
-| `save_bucket_data` | Create or update a document in a bucket                                     |
+| Tool                 | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `list_buckets`       | List all bucket schemas                                                     |
+| `insert_bucket`      | Create a bucket schema                                                      |
+| `update_bucket`      | Replace an existing bucket schema                                           |
+| `list_bucket_data`   | Query documents with filtering, pagination, sorting and relation resolution |
+| `save_bucket_data`   | Create or update a document in a bucket                                     |
+| `export_bucket_data` | Export bucket documents to a local JSON or CSV file                         |
+| `import_bucket_data` | Import documents from a local JSON or CSV file into a bucket                |
 
 ### Development
 
@@ -115,9 +137,16 @@ Add to your Cursor MCP settings:
 | `list_functions`             | List all serverless functions                |
 | `get_function_index`         | Get the source code of a function            |
 | `get_function_dependencies`  | Get installed dependencies for a function    |
-| `save_function`              | Create or update a serverless function       |
+| `insert_function`            | Create a serverless function                 |
+| `update_function`            | Replace an existing serverless function      |
 | `save_function_index`        | Replace and compile a function's source code |
 | `save_function_dependencies` | Install npm packages for a function          |
+| `list_env_vars`              | List all environment variables               |
+| `insert_env_var`             | Create an environment variable               |
+| `update_env_var`             | Update an existing environment variable      |
+| `list_secrets`               | List all secrets                             |
+| `insert_secret`              | Create a secret                              |
+| `update_secret`              | Update an existing secret                    |
 
 ### Debug
 
@@ -138,15 +167,9 @@ Add to your Cursor MCP settings:
 | Tool                    | Description                                        |
 | ----------------------- | -------------------------------------------------- |
 | `list_storage_objects`  | List storage objects with filtering and pagination |
-| `save_storage_object`   | Create or update a storage object                  |
+| `insert_storage_object` | Create a storage object                            |
+| `update_storage_object` | Replace an existing storage object                 |
 | `rename_storage_object` | Rename a storage object                            |
-
-### Version Control
-
-| Tool                             | Description                             |
-| -------------------------------- | --------------------------------------- |
-| `list_versioncontrol_commands`   | List available version control commands |
-| `execute_versioncontrol_command` | Execute a version control command       |
 
 ## License
 
