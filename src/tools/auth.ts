@@ -1,16 +1,9 @@
+import { defaultKeys, type Keys, idFields, requireId } from "../engine";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { ApiKey, Identity, PolicyBase } from "../types";
-import {
-  ApiKeyOutputSchema,
-  ApiKeyListOutputSchema,
-  IdentityOutputSchema,
-  IdentityListOutputSchema,
-  PolicyOutputSchema,
-  PolicyListOutputSchema,
-  UserListOutputSchema,
-} from "../schemas/outputs";
+import { buildOutputSchemas } from "../schemas/outputs";
 
 // ── Resource primitive validators ─────────────────────────────────────────────
 // Plain resource id: no forward-slash, no asterisk, no whitespace
@@ -197,7 +190,9 @@ const PolicyInputBase = z.object({
 export function registerAuthTools(
   server: McpServer,
   client: SpicaClient,
+  keys: Keys = defaultKeys,
 ): void {
+  const out = buildOutputSchemas(keys.systemKey);
   // ── list_apikeys ──────────────────────────────────────────────────────
   server.registerTool(
     "list_apikeys",
@@ -206,7 +201,7 @@ export function registerAuthTools(
       description:
         "Returns all API keys from the Spica server. No pagination or filtering.",
       annotations: { readOnlyHint: true },
-      outputSchema: ApiKeyListOutputSchema,
+      outputSchema: out.ApiKeyListOutputSchema,
     },
     async () => {
       const { data } = (await client.get("/passport/apikey")) as {
@@ -230,25 +225,23 @@ export function registerAuthTools(
         "Creates a new API key. Use insert_policy to create a policy before associating it.",
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(ApiKeyInputBase),
     },
-    async ({ _id, name, description, active, policies }) => {
+    async ({ _id, id, name, description, active, policies }) => {
+      const recordId = _id ?? id;
       const body: {
         name: string;
         active: boolean;
         description?: string;
-        _id?: string;
+        [key: string]: unknown;
       } = { name, active };
       if (description !== undefined) body.description = description;
-      if (_id !== undefined) body._id = _id;
+      if (recordId !== undefined) body[keys.systemKey] = recordId;
 
       let apikey = (await client.post("/passport/apikey", body)) as ApiKey;
-      const apikeyId = apikey._id;
+      const apikeyId = keys.idOf(apikey);
 
       if (policies !== undefined) {
         for (const pid of policies) {
@@ -272,20 +265,21 @@ export function registerAuthTools(
     {
       title: "Update API Key",
       description:
-        "Updates an existing API key. _id is required. Use insert_policy to create or update a policy before associating it.",
+        `Updates an existing API key. ${keys.idRequired} Use insert_policy to create or update a policy before associating it.`,
       inputSchema: z
-        .object({ _id: z.string().describe("API key ID. Required.") })
+        .object(idFields(keys, "API key", true))
         .merge(ApiKeyInputBase),
     },
-    async ({ _id, name, description, active, policies }) => {
+    async ({ _id, id, name, description, active, policies }) => {
+      const recordId = requireId(_id, id);
       const body: { name: string; active: boolean; description?: string } = {
         name,
         active,
       };
       if (description !== undefined) body.description = description;
 
-      let apikey = (await client.put(`/passport/apikey/${_id}`, body)) as ApiKey;
-      const apikeyId = _id;
+      let apikey = (await client.put(`/passport/apikey/${recordId}`, body)) as ApiKey;
+      const apikeyId = recordId;
 
       if (policies !== undefined) {
         const currentPolicies = apikey.policies ?? [];
@@ -320,7 +314,7 @@ export function registerAuthTools(
       title: "List Identities",
       description: "Returns identities with optional filtering and pagination.",
       annotations: { readOnlyHint: true },
-      outputSchema: IdentityListOutputSchema,
+      outputSchema: out.IdentityListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),
@@ -355,10 +349,7 @@ export function registerAuthTools(
       description:
         "Creates a new identity. Use insert_policy to create a policy before associating it.",
       inputSchema: z.object({
-        _id: z
-          .string()
-          .optional()
-          .describe("Optional custom ID. If omitted, MongoDB generates one."),
+        ...idFields(keys, "Record"),
         identifier: z.string().describe("Unique identifier for the identity"),
         password: z.string().describe("Password. Required on create."),
         policies: z
@@ -367,14 +358,15 @@ export function registerAuthTools(
           .describe("Policy IDs to associate with the identity."),
       }),
     },
-    async ({ _id, identifier, password, policies }) => {
+    async ({ _id, id, identifier, password, policies }) => {
+      const recordId = _id ?? id;
       const identityBody: Record<string, unknown> = { identifier, password };
-      if (_id !== undefined) identityBody._id = _id;
+      if (recordId !== undefined) identityBody[keys.systemKey] = recordId;
       let identity = (await client.post(
         "/passport/identity",
         identityBody,
       )) as Identity;
-      const identityId = identity._id;
+      const identityId = keys.idOf(identity);
 
       if (policies !== undefined) {
         for (const pid of policies) {
@@ -400,9 +392,9 @@ export function registerAuthTools(
     {
       title: "Update Identity",
       description:
-        "Updates an existing identity. _id is required. Use insert_policy to create or update a policy before associating it.",
+        `Updates an existing identity. ${keys.idRequired} Use insert_policy to create or update a policy before associating it.`,
       inputSchema: z.object({
-        _id: z.string().describe("Identity ID. Required."),
+        ...idFields(keys, "Identity", true),
         identifier: z
           .string()
           .optional()
@@ -419,16 +411,17 @@ export function registerAuthTools(
           ),
       }),
     },
-    async ({ _id, identifier, password, policies }) => {
+    async ({ _id, id, identifier, password, policies }) => {
+      const recordId = requireId(_id, id);
       const body: { identifier?: string; password?: string } = {};
       if (identifier !== undefined) body.identifier = identifier;
       if (password !== undefined) body.password = password;
 
       let identity = (await client.put(
-        `/passport/identity/${_id}`,
+        `/passport/identity/${recordId}`,
         body,
       )) as Identity;
-      const identityId = _id;
+      const identityId = recordId;
 
       if (policies !== undefined) {
         const currentPolicies = identity.policies ?? [];
@@ -468,7 +461,7 @@ export function registerAuthTools(
       description:
         "Returns access policies with optional filtering and pagination.",
       annotations: { readOnlyHint: true },
-      outputSchema: PolicyListOutputSchema,
+      outputSchema: out.PolicyListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),
@@ -503,17 +496,15 @@ export function registerAuthTools(
       description: "Creates a new access policy.",
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(PolicyInputBase),
     },
-    async ({ _id, name, description, statement }) => {
-      const body: PolicyBase & { _id?: string } = { name, statement };
+    async ({ _id, id, name, description, statement }) => {
+      const recordId = _id ?? id;
+      const body: PolicyBase & Record<string, unknown> = { name, statement };
       if (description !== undefined) body.description = description;
-      if (_id !== undefined) body._id = _id;
+      if (recordId !== undefined) body[keys.systemKey] = recordId;
 
       const policy = (await client.post("/passport/policy", body)) as PolicyBase;
 
@@ -531,17 +522,18 @@ export function registerAuthTools(
     "update_policy",
     {
       title: "Update Policy",
-      description: "Replaces an existing access policy. _id is required.",
+      description: `Replaces an existing access policy. ${keys.idRequired}`,
       inputSchema: z
-        .object({ _id: z.string().describe("Policy ID. Required.") })
+        .object(idFields(keys, "Policy", true))
         .merge(PolicyInputBase),
     },
-    async ({ _id, name, description, statement }) => {
+    async ({ _id, id, name, description, statement }) => {
+      const recordId = requireId(_id, id);
       const body: PolicyBase = { name, statement };
       if (description !== undefined) body.description = description;
 
-      await client.put(`/passport/policy/${_id}`, body);
-      const policy = (await client.get(`/passport/policy/${_id}`)) as PolicyBase;
+      await client.put(`/passport/policy/${recordId}`, body);
+      const policy = (await client.get(`/passport/policy/${recordId}`)) as PolicyBase;
 
       return {
         content: [
@@ -560,7 +552,7 @@ export function registerAuthTools(
       description:
         "Returns users with optional pagination, sorting, and filtering.",
       annotations: { readOnlyHint: true },
-      outputSchema: UserListOutputSchema,
+      outputSchema: out.UserListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         limit: z.number().int().optional().describe("Max documents to return"),

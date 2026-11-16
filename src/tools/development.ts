@@ -1,3 +1,4 @@
+import { defaultKeys, type Keys, idFields, requireId } from "../engine";
 import { z } from "zod";
 import type {
   McpServer,
@@ -7,23 +8,15 @@ import type { SpicaClient } from "../client";
 import type { SpicaFunction, Trigger } from "../types";
 import type { TriggerSchemaResult } from "../schemas/triggers";
 import { index } from "../examples/function";
-import {
-  FunctionOutputSchema,
-  FunctionListOutputSchema,
-  FunctionIndexOutputSchema,
-  FunctionDependenciesOutputSchema,
-  EnvVarOutputSchema,
-  EnvVarListOutputSchema,
-  SecretOutputSchema,
-  SecretListOutputSchema,
-  SuccessMessageOutputSchema,
-} from "../schemas/outputs";
+import { buildOutputSchemas } from "../schemas/outputs";
 
 export function registerDevelopmentTools(
   server: McpServer,
   client: SpicaClient,
   triggerInfo: TriggerSchemaResult,
+  keys: Keys = defaultKeys,
 ): { updateFunctionTool: RegisteredTool } {
+  const out = buildOutputSchemas(keys.systemKey);
   // ── Shared input base schemas ─────────────────────────────────────────
   const EnvVarInputBase = z.object({
     key: z.string().describe("Variable key"),
@@ -70,7 +63,7 @@ export function registerDevelopmentTools(
       title: "List Functions",
       description: "Returns all serverless function objects.",
       annotations: { readOnlyHint: true },
-      outputSchema: FunctionListOutputSchema,
+      outputSchema: out.FunctionListOutputSchema,
     },
     async () => {
       const data = await client.get("/function");
@@ -90,7 +83,7 @@ export function registerDevelopmentTools(
       title: "Get Function Index",
       description: "Returns the source code (index) of a specific function.",
       annotations: { readOnlyHint: true },
-      outputSchema: FunctionIndexOutputSchema,
+      outputSchema: out.FunctionIndexOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
       }),
@@ -114,7 +107,7 @@ export function registerDevelopmentTools(
       description:
         "Returns the installed dependencies and their versions for a specific function.",
       annotations: { readOnlyHint: true },
-      outputSchema: FunctionDependenciesOutputSchema,
+      outputSchema: out.FunctionDependenciesOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
       }),
@@ -137,7 +130,7 @@ export function registerDevelopmentTools(
       title: "List Environment Variables",
       description: "Returns all environment variable objects.",
       annotations: { readOnlyHint: true },
-      outputSchema: EnvVarListOutputSchema,
+      outputSchema: out.EnvVarListOutputSchema,
     },
     async () => {
       const data = await client.get("/env-var");
@@ -156,19 +149,17 @@ export function registerDevelopmentTools(
     {
       title: "Insert Environment Variable",
       description: "Creates a new environment variable.",
-      outputSchema: z.object(EnvVarOutputSchema).passthrough(),
+      outputSchema: z.object(out.EnvVarOutputSchema).passthrough(),
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(EnvVarInputBase),
     },
-    async ({ _id, key, value }) => {
+    async ({ _id, id, key, value }) => {
+      const recordId = _id ?? id;
       const body: Record<string, unknown> = { key, value };
-      if (_id !== undefined) body._id = _id;
+      if (recordId !== undefined) body[keys.systemKey] = recordId;
       const result = (await client.post("/env-var", body)) as {
         _id: string;
         key: string;
@@ -188,14 +179,15 @@ export function registerDevelopmentTools(
     "update_env_var",
     {
       title: "Update Environment Variable",
-      description: "Updates an existing environment variable. _id is required.",
-      outputSchema: z.object(EnvVarOutputSchema).passthrough(),
+      description: `Updates an existing environment variable. ${keys.idRequired}`,
+      outputSchema: z.object(out.EnvVarOutputSchema).passthrough(),
       inputSchema: z
-        .object({ _id: z.string().describe("Env var ID. Required.") })
+        .object(idFields(keys, "Env var", true))
         .merge(EnvVarInputBase),
     },
-    async ({ _id, key, value }) => {
-      const result = (await client.put(`/env-var/${_id}`, {
+    async ({ _id, id, key, value }) => {
+      const recordId = requireId(_id, id);
+      const result = (await client.put(`/env-var/${recordId}`, {
         key,
         value,
       })) as { _id: string; key: string; value: string };
@@ -215,7 +207,7 @@ export function registerDevelopmentTools(
       title: "List Secrets",
       description: "Returns all secret objects.",
       annotations: { readOnlyHint: true },
-      outputSchema: SecretListOutputSchema,
+      outputSchema: out.SecretListOutputSchema,
     },
     async () => {
       const data = await client.get("/secret");
@@ -234,19 +226,17 @@ export function registerDevelopmentTools(
     {
       title: "Insert Secret",
       description: "Creates a new secret.",
-      outputSchema: z.object(SecretOutputSchema).passthrough(),
+      outputSchema: z.object(out.SecretOutputSchema).passthrough(),
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(SecretInputBase),
     },
-    async ({ _id, key, value }) => {
+    async ({ _id, id, key, value }) => {
+      const recordId = _id ?? id;
       const body: Record<string, unknown> = { key, value };
-      if (_id !== undefined) body._id = _id;
+      if (recordId !== undefined) body[keys.systemKey] = recordId;
       const result = (await client.post("/secret", body)) as {
         _id: string;
         key: string;
@@ -266,14 +256,15 @@ export function registerDevelopmentTools(
     "update_secret",
     {
       title: "Update Secret",
-      description: "Updates an existing secret. _id is required.",
-      outputSchema: z.object(SecretOutputSchema).passthrough(),
+      description: `Updates an existing secret. ${keys.idRequired}`,
+      outputSchema: z.object(out.SecretOutputSchema).passthrough(),
       inputSchema: z
-        .object({ _id: z.string().describe("Secret ID. Required.") })
+        .object(idFields(keys, "Secret", true))
         .merge(SecretInputBase),
     },
-    async ({ _id, key, value }) => {
-      const result = (await client.put(`/secret/${_id}`, {
+    async ({ _id, id, key, value }) => {
+      const recordId = requireId(_id, id);
+      const result = (await client.put(`/secret/${recordId}`, {
         key,
         value,
       })) as { _id: string; key: string; value: string };
@@ -295,16 +286,14 @@ export function registerDevelopmentTools(
         "Creates a new serverless function. Use insert_env_var / insert_secret to create env vars and secrets before associating them.",
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(FunctionInputBase),
     },
-    async ({ _id, name, description, triggers, timeout, language, env_vars, secrets }) => {
+    async ({ _id, id, name, description, triggers, timeout, language, env_vars, secrets }) => {
+      const recordId = _id ?? id;
       const fnBody: {
-        _id?: string;
+        [key: string]: unknown;
         name: string;
         triggers?: Record<string, Trigger>;
         timeout: number;
@@ -313,10 +302,10 @@ export function registerDevelopmentTools(
       } = { name, timeout, language };
       if (triggers !== undefined) fnBody.triggers = triggers;
       if (description !== undefined) fnBody.description = description;
-      if (_id !== undefined) fnBody._id = _id;
+      if (recordId !== undefined) fnBody[keys.systemKey] = recordId;
 
       let fn = (await client.post("/function", fnBody)) as SpicaFunction;
-      const fnId = fn._id;
+      const fnId = keys.idOf(fn);
 
       if (env_vars !== undefined) {
         for (const eid of env_vars) {
@@ -344,13 +333,14 @@ export function registerDevelopmentTools(
     {
       title: "Update Function",
       description:
-        "Replaces an existing serverless function. _id is required. Use insert_env_var / insert_secret to create or update env vars and secrets before associating them.",
+        `Replaces an existing serverless function. ${keys.idRequired} Use insert_env_var / insert_secret to create or update env vars and secrets before associating them.`,
       inputSchema: z
-        .object({ _id: z.string().describe("Function ID. Required.") })
+        .object(idFields(keys, "Function", true))
         .merge(FunctionInputBase),
     },
     async ({
       _id,
+      id,
       name,
       description,
       triggers,
@@ -359,6 +349,7 @@ export function registerDevelopmentTools(
       env_vars,
       secrets,
     }) => {
+      const recordId = requireId(_id, id);
       const fnBody: {
         name: string;
         triggers?: Record<string, Trigger>;
@@ -369,12 +360,12 @@ export function registerDevelopmentTools(
       if (triggers !== undefined) fnBody.triggers = triggers;
       if (description !== undefined) fnBody.description = description;
 
-      let fn = (await client.put(`/function/${_id}`, fnBody)) as SpicaFunction;
-      const fnId = _id;
+      let fn = (await client.put(`/function/${recordId}`, fnBody)) as SpicaFunction;
+      const fnId = recordId;
 
       if (env_vars !== undefined) {
         const currentEnvIds = (fn.env_vars ?? []).map((e) =>
-          typeof e === "string" ? e : e._id,
+          typeof e === "string" ? e : keys.idOf(e) ?? "",
         );
 
         for (const eid of env_vars) {
@@ -391,7 +382,7 @@ export function registerDevelopmentTools(
 
       if (secrets !== undefined) {
         const currentSecretIds = (fn.secrets ?? []).map((s) =>
-          typeof s === "string" ? s : s._id,
+          typeof s === "string" ? s : keys.idOf(s) ?? "",
         );
 
         for (const sid of secrets) {
@@ -422,7 +413,7 @@ export function registerDevelopmentTools(
       description:
         "Replaces and compiles the source code (index) of a function. " +
         "Returns 204 on success or a compilation diagnostics error on failure.",
-      outputSchema: SuccessMessageOutputSchema,
+      outputSchema: out.SuccessMessageOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         index: z
@@ -455,7 +446,7 @@ export function registerDevelopmentTools(
       title: "Save Function Dependencies",
       description:
         "Installs one or more npm packages as dependencies for a function.",
-      outputSchema: SuccessMessageOutputSchema,
+      outputSchema: out.SuccessMessageOutputSchema,
       inputSchema: z.object({
         functionId: z.string().describe("Function ID"),
         packages: z

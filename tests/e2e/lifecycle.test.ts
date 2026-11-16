@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { SpicaClient } from "../../src/client.js";
+import { createKeys, detectEngine, type Keys } from "../../src/engine.js";
 import { registerAuthTools } from "../../src/tools/auth.js";
 import { registerDatabaseTools } from "../../src/tools/database.js";
 import { registerDevelopmentTools } from "../../src/tools/development.js";
@@ -26,6 +27,9 @@ const toDelete: string[] = [];
 describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
   let mcpClient: Client;
   let spicaClient: SpicaClient;
+  let keys: Keys;
+  let dataKey: string;
+  const idOf = (r: unknown) => keys.idOf(r) as string;
 
   // Shared IDs populated during the run
   let bucketId: string;
@@ -38,6 +42,14 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
   let functionId: string;
   let identityId: string;
   let exportedFilePath: string;
+
+  const bucketProperties = () => ({
+    name: { type: "string", title: "Name" },
+    value: { type: "number", title: "Value" },
+    ...(keys.engine === "postgresql"
+      ? { id: { type: "uuid", title: "Id" } }
+      : {}),
+  });
 
   // Call a tool by name, parse JSON from content[0].text, throw on isError
   async function call(
@@ -66,14 +78,15 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
       "/function/information",
     )) as FunctionInformation;
     const triggerInfo = buildTriggerSchemas(functionInfo);
+    keys = createKeys(await detectEngine(spicaClient), spicaClient);
 
     const server = new McpServer({ name: "e2e-test-server", version: "1.0.0" });
-    registerAuthTools(server, spicaClient);
-    registerDatabaseTools(server, spicaClient);
-    registerDevelopmentTools(server, spicaClient, triggerInfo);
-    registerDebugTools(server, spicaClient);
-    registerAuditingTools(server, spicaClient);
-    registerStorageTools(server, spicaClient);
+    registerAuthTools(server, spicaClient, keys);
+    registerDatabaseTools(server, spicaClient, keys);
+    registerDevelopmentTools(server, spicaClient, triggerInfo, keys);
+    registerDebugTools(server, spicaClient, keys);
+    registerAuditingTools(server, spicaClient, keys);
+    registerStorageTools(server, spicaClient, keys);
 
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
@@ -104,29 +117,23 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("insert_bucket", {
       title: "E2E Test Bucket",
       description: "Created by E2E tool call tests — safe to delete",
-      primary: "name",
+      primary: keys.engine === "postgresql" ? "id" : "name",
       acl: { read: "true==true", write: "true==true" },
-      properties: {
-        name: { type: "string", title: "Name" },
-        value: { type: "number", title: "Value" },
-      },
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    bucketId = result._id;
+      properties: bucketProperties(),
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    bucketId = idOf(result);
     toDelete.push(`/bucket/${bucketId}`);
   });
 
   it("update_bucket replaces the bucket schema", async () => {
     const result = (await call("update_bucket", {
-      _id: bucketId,
+      [keys.systemKey]: bucketId,
       title: "E2E Test Bucket (updated)",
       description: "Updated by E2E tool call tests",
-      primary: "name",
+      primary: keys.engine === "postgresql" ? "id" : "name",
       acl: { read: "true==true", write: "true==true" },
-      properties: {
-        name: { type: "string", title: "Name" },
-        value: { type: "number", title: "Value" },
-      },
+      properties: bucketProperties(),
     })) as { title: string };
     expect(result.title).toBe("E2E Test Bucket (updated)");
   });
@@ -141,9 +148,10 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("save_bucket_data", {
       bucketId,
       document: { name: "e2e-doc", value: 42 },
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    docId = result._id;
+    })) as Record<string, unknown>;
+    dataKey = await keys.bucketDataKey(bucketId);
+    expect(result[dataKey]).toBeDefined();
+    docId = String(result[dataKey]);
   });
 
   it("list_bucket_data returns the inserted document", async () => {
@@ -156,10 +164,10 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     expect(result[0].value).toBe(42);
   });
 
-  it("save_bucket_data updates an existing document via _id", async () => {
+  it("save_bucket_data updates an existing document via its data key", async () => {
     const result = (await call("save_bucket_data", {
       bucketId,
-      document: { _id: docId, name: "e2e-doc-updated", value: 99 },
+      document: { [dataKey]: docId, name: "e2e-doc-updated", value: 99 },
     })) as { name: string };
     expect(result.name).toBe("e2e-doc-updated");
   });
@@ -199,9 +207,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("insert_storage_object", {
       name: "e2e-file.txt",
       content: { type: "text/plain", data },
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    storageId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    storageId = idOf(result);
     toDelete.push(`/storage/${storageId}`);
   });
 
@@ -211,8 +219,8 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
       _id: storageId,
       name: "e2e-file.txt",
       content: { type: "text/plain", data },
-    })) as { _id: string };
-    expect(result._id).toBe(storageId);
+    })) as Record<string, unknown>;
+    expect(idOf(result)).toBe(storageId);
   });
 
   it("rename_storage_object changes the file name", async () => {
@@ -241,9 +249,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
           resource: { include: ["*"], exclude: [] },
         },
       ],
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    policyId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    policyId = idOf(result);
     toDelete.push(`/passport/policy/${policyId}`);
   });
 
@@ -273,9 +281,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
       name: "e2e-apikey",
       description: "E2E tool test — safe to delete",
       active: true,
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    apikeyId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    apikeyId = idOf(result);
     toDelete.push(`/passport/apikey/${apikeyId}`);
   });
 
@@ -298,9 +306,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("insert_identity", {
       identifier: "e2e-tool-identity",
       password: "E2eP@ssw0rd!",
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    identityId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    identityId = idOf(result);
     toDelete.push(`/passport/identity/${identityId}`);
   });
 
@@ -308,8 +316,8 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("update_identity", {
       _id: identityId,
       identifier: "e2e-tool-identity",
-    })) as { _id: string };
-    expect(result._id).toBe(identityId);
+    })) as Record<string, unknown>;
+    expect(idOf(result)).toBe(identityId);
   });
 
   it("list_users returns users", async () => {
@@ -328,9 +336,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("insert_env_var", {
       key: "E2E_TOOL_VAR",
       value: "hello",
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    envVarId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    envVarId = idOf(result);
     toDelete.push(`/env-var/${envVarId}`);
   });
 
@@ -352,9 +360,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     const result = (await call("insert_secret", {
       key: "E2E_TOOL_SECRET",
       value: "s3cret",
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    secretId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    secretId = idOf(result);
     toDelete.push(`/secret/${secretId}`);
   });
 
@@ -391,9 +399,9 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
           },
         },
       },
-    })) as { _id: string };
-    expect(result._id).toBeDefined();
-    functionId = result._id;
+    })) as Record<string, unknown>;
+    expect(keys.idOf(result)).toBeDefined();
+    functionId = idOf(result);
     toDelete.push(`/function/${functionId}`);
   });
 

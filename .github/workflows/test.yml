@@ -40,12 +40,16 @@ jobs:
           retention-days: 7
 
   e2e:
-    name: End-to-End Tests
+    name: End-to-End Tests (${{ matrix.engine }})
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [mongodb, postgresql]
     runs-on: ubuntu-latest
     # All runs share one Spica instance and the suite uses fixed resource
     # names, so overlapping runs collide on unique keys. Queue them instead.
     concurrency:
-      group: e2e-shared-spica
+      group: e2e-shared-spica-${{ matrix.engine }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -63,5 +67,5 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         env:
-          SPICA_URL: ${{ secrets.SPICA_URL }}
-          SPICA_APIKEY: ${{ secrets.SPICA_APIKEY }}
+          SPICA_URL: ${{ matrix.engine == 'mongodb' && secrets.SPICA_URL || matrix.engine == 'postgresql' && secrets.SPICA_PG_URL }}
+          SPICA_APIKEY: ${{ matrix.engine == 'mongodb' && secrets.SPICA_APIKEY || matrix.engine == 'postgresql' && secrets.SPICA_PG_APIKEY }}
