@@ -69,3 +69,14 @@ jobs:
         env:
           SPICA_URL: ${{ matrix.engine == 'mongodb' && secrets.SPICA_URL || matrix.engine == 'postgresql' && secrets.SPICA_PG_URL }}
           SPICA_APIKEY: ${{ matrix.engine == 'mongodb' && secrets.SPICA_APIKEY || matrix.engine == 'postgresql' && secrets.SPICA_PG_APIKEY }}
+
+  # Branch protection requires a check named "End-to-End Tests"; matrix legs
+  # get suffixed names, so this job aggregates them under the original name.
+  e2e-gate:
+    name: End-to-End Tests
+    needs: e2e
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all engine legs to pass
+        run: test "${{ needs.e2e.result }}" = "success"
