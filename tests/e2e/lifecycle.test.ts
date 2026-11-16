@@ -47,7 +47,7 @@ describe.skipIf(!shouldRun)("Spica E2E lifecycle (MCP tool calls)", () => {
     name: { type: "string", title: "Name" },
     value: { type: "number", title: "Value" },
     ...(keys.engine === "postgresql"
-      ? { id: { type: "uuid", title: "Id" } }
+      ? { id: { type: "uuid", title: "Id", options: { generated: true } } }
       : {}),
   });
 
