@@ -1,12 +1,15 @@
+import { defaultKeys, type Keys } from "../engine";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
-import { ActivityListOutputSchema } from "../schemas/outputs";
+import { buildOutputSchemas } from "../schemas/outputs";
 
 export function registerAuditingTools(
   server: McpServer,
   client: SpicaClient,
+  keys: Keys = defaultKeys,
 ): void {
+  const out = buildOutputSchemas(keys.systemKey);
   // ── list_activities ───────────────────────────────────────────────────
   server.registerTool(
     "list_activities",
@@ -34,7 +37,7 @@ export function registerAuditingTools(
         skip: z.number().int().optional().describe("Documents to skip"),
         limit: z.number().int().optional().describe("Max documents to return"),
       }),
-      outputSchema: z.object(ActivityListOutputSchema),
+      outputSchema: z.object(out.ActivityListOutputSchema),
     },
     async ({
       identifier,

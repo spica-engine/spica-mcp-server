@@ -1,15 +1,11 @@
+import { defaultKeys, type Keys, idFields, requireId } from "../engine";
 import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
-import { BucketPropertySchema } from "../schemas/bucket";
-import {
-  BucketListOutputSchema,
-  BucketDocumentListOutputSchema,
-  ExportBucketDataOutputSchema,
-  ImportBucketDataOutputSchema,
-} from "../schemas/outputs";
+import { bucketHints, buildBucketPropertySchema } from "../schemas/bucket";
+import { buildOutputSchemas } from "../schemas/outputs";
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
@@ -141,7 +137,9 @@ export function fromCsv(content: string): Record<string, unknown>[] {
 }
 
 // ── Shared bucket field schema ───────────────────────────────────────────────
-const BucketInputBase = z.object({
+const buildBucketInputBase = (keys: Keys) => {
+  const hints = bucketHints(keys.engine, keys.systemKey);
+  return z.object({
   title: z
     .string()
     .min(4)
@@ -156,7 +154,7 @@ const BucketInputBase = z.object({
     .min(5)
     .max(250)
     .describe("Description of the bucket"),
-  primary: z.string().describe("Primary field key used as display column"),
+  primary: z.string().describe(hints.primary),
   history: z
     .boolean()
     .optional()
@@ -166,9 +164,9 @@ const BucketInputBase = z.object({
     .optional()
     .describe("Category name for grouping buckets"),
   properties: z
-    .record(BucketPropertySchema)
+    .record(buildBucketPropertySchema(keys.engine))
     .describe(
-      "Field definitions keyed by field name. Property names must be lowercase with underscores/digits only (pattern: ^(?!(_id)$)([a-z_0-9]*)+$). At least one property is required.",
+      `Field definitions keyed by field name. ${hints.fieldNames} At least one property is required.`,
     ),
   order: z.number().optional().describe("Display order of the bucket"),
   required: z
@@ -179,12 +177,12 @@ const BucketInputBase = z.object({
     read: z
       .string()
       .describe(
-        "ACL expression for read access. Runs for only users. Example: 'document.owner==auth._id' (users can only read their own data). Default: 'true==true'",
+        `ACL expression for read access. Runs for only users. Example: '${hints.aclExample}' (users can only read their own data). Default: 'true==true'`,
       ),
     write: z
       .string()
       .describe(
-        "ACL expression for write access. Runs for only users. Example: 'document.owner==auth._id' (users can only write their own data). Default: 'true==true'",
+        `ACL expression for write access. Runs for only users. Example: '${hints.aclExample}' (users can only write their own data). Default: 'true==true'`,
       ),
   }),
   documentSettings: z
@@ -209,24 +207,32 @@ const BucketInputBase = z.object({
         definition: z
           .record(z.union([z.number().int(), z.string()]))
           .describe(
-            "Field paths and index direction (1 for ascending, -1 for descending, or 'text' for text index)",
+            hints.indexDefinition,
           ),
         options: z
           .record(z.any())
           .optional()
           .describe(
-            "Additional MongoDB index options (e.g. unique, sparse, expireAfterSeconds for TTL)",
+            hints.indexOptions,
           ),
       }),
     )
     .optional()
     .describe("Custom database indexes"),
 });
+};
 
 export function registerDatabaseTools(
   server: McpServer,
   client: SpicaClient,
+  keys: Keys = defaultKeys,
 ): void {
+  const out = buildOutputSchemas(keys.systemKey);
+  const BucketInputBase = buildBucketInputBase(keys);
+  const filterDescription =
+    keys.engine === "postgresql"
+      ? "Expression filter, e.g. document.age > 1. JSON filters are not supported on PostgreSQL."
+      : "Filter expression or JSON object to filter documents";
   // ── list_buckets ──────────────────────────────────────────────────────
   server.registerTool(
     "list_buckets",
@@ -234,7 +240,7 @@ export function registerDatabaseTools(
       title: "List Buckets",
       description: "Returns all bucket schemas from the Spica server.",
       annotations: { readOnlyHint: true },
-      outputSchema: BucketListOutputSchema,
+      outputSchema: out.BucketListOutputSchema,
     },
     async () => {
       const data = await client.get("/bucket");
@@ -263,17 +269,15 @@ export function registerDatabaseTools(
         "For 'array'/'multiselect' type: use 'items' to define the element schema.",
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(BucketInputBase),
     },
-    async ({ _id, ...rest }) => {
+    async ({ _id, id, ...rest }) => {
+      const recordId = _id ?? id;
       const bucket = await client.post(
         "/bucket",
-        _id !== undefined ? { _id, ...rest } : rest,
+        recordId !== undefined ? { [keys.systemKey]: recordId, ...rest } : rest,
       );
       return {
         content: [
@@ -290,7 +294,7 @@ export function registerDatabaseTools(
     {
       title: "Update Bucket",
       description:
-        "Replaces an existing bucket schema. _id is required.\n\n" +
+        `Replaces an existing bucket schema. ${keys.idRequired}\n\n` +
         "The 'properties' field defines the bucket's data model. Each property has a 'type' which can be:\n" +
         "- Standard types: string, number, boolean, object, array\n" +
         "- Spica types: relation (link to another bucket), storage (file reference), richtext, textarea, color, " +
@@ -299,11 +303,13 @@ export function registerDatabaseTools(
         "For 'object' type: use nested 'properties' to define sub-fields.\n" +
         "For 'array'/'multiselect' type: use 'items' to define the element schema.",
       inputSchema: z
-        .object({ _id: z.string().describe("Bucket ID. Required.") })
+        .object(idFields(keys, "Bucket", true))
         .merge(BucketInputBase),
     },
-    async ({ _id, ...body }) => {
-      const bucket = await client.put(`/bucket/${_id}`, body);
+    async ({ _id, id, ...body }) => {
+      const recordId = requireId(_id, id);
+      const bucket = await client.put(`/bucket/${recordId}`, body);
+      keys.invalidateBucket(recordId);
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(bucket, null, 2) },
@@ -321,13 +327,13 @@ export function registerDatabaseTools(
       description:
         "Returns documents from a bucket with optional filtering, pagination, sorting, and relation resolution.",
       annotations: { readOnlyHint: true },
-      outputSchema: BucketDocumentListOutputSchema,
+      outputSchema: out.BucketDocumentListOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         filter: z
           .string()
           .optional()
-          .describe("Filter expression or JSON object to filter documents"),
+          .describe(filterDescription),
         paginate: z
           .boolean()
           .optional()
@@ -362,6 +368,7 @@ export function registerDatabaseTools(
       relation,
       language,
     }) => {
+      keys.rejectJsonFilter(filter);
       const query: Record<string, unknown> = {
         filter,
         paginate,
@@ -390,24 +397,25 @@ export function registerDatabaseTools(
     {
       title: "Save Bucket Data",
       description:
-        "Creates or updates a document in a bucket (upsert). When the document contains _id it is replaced, otherwise inserted. " +
+        `Creates or updates a document in a bucket (upsert). When the document contains its key (${keys.documentKeyHint}) it is replaced, otherwise inserted. ` +
         "The document body must conform to the bucket's schema definition.",
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID"),
         document: z
           .record(z.any())
           .describe(
-            "Document object. Include _id to update an existing document, omit to create.",
+            `Document object. Include the document key (${keys.documentKeyHint}) to update an existing document, omit to create.`,
           ),
       }),
     },
     async ({ bucketId, document }) => {
       let result: unknown;
-      const docId = document["_id"];
-      if (typeof docId === "string" && docId) {
-        const { _id, ...body } = document;
-        void _id; // consumed for URL, not sent as body
-        result = await client.put(`/bucket/${bucketId}/data/${docId}`, body);
+      const dataKey = await keys.bucketDataKey(bucketId);
+      const rawId = document[dataKey] ?? document["_id"] ?? document["id"];
+      if (rawId !== undefined && rawId !== null && rawId !== "") {
+        const { [dataKey]: _, ...body } = document;
+        void _; // consumed for URL, not sent as body
+        result = await client.put(`/bucket/${bucketId}/data/${rawId}`, body);
       } else {
         result = await client.post(`/bucket/${bucketId}/data`, document);
       }
@@ -430,7 +438,7 @@ export function registerDatabaseTools(
         "Supports filter, limit, skip, sort. " +
         "Efficient way for large dataset exports.",
       annotations: { readOnlyHint: false },
-      outputSchema: ExportBucketDataOutputSchema,
+      outputSchema: out.ExportBucketDataOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID to export data from"),
         format: z
@@ -452,7 +460,7 @@ export function registerDatabaseTools(
         filter: z
           .string()
           .optional()
-          .describe("Filter expression or JSON object to filter documents"),
+          .describe(filterDescription),
         limit: z.number().int().optional().describe("Max documents to return"),
         skip: z.number().int().optional().describe("Documents to skip"),
         sort: z
@@ -476,6 +484,7 @@ export function registerDatabaseTools(
       sort,
       language,
     }) => {
+      keys.rejectJsonFilter(filter);
       const query: Record<string, unknown> = {
         filter,
         limit,
@@ -531,7 +540,7 @@ export function registerDatabaseTools(
         "Reads a local JSON or CSV file and inserts its documents into a bucket in parallel batches. " +
         "Use concurrency to control how many inserts run at once (default 50). " +
         "Efficient way for large dataset imports.",
-      outputSchema: ImportBucketDataOutputSchema,
+      outputSchema: out.ImportBucketDataOutputSchema,
       inputSchema: z.object({
         bucketId: z.string().describe("Bucket ID to import data into"),
         filePath: z
@@ -578,6 +587,8 @@ export function registerDatabaseTools(
           : [parsed as Record<string, unknown>];
       }
 
+      const dataKey = await keys.bucketDataKey(bucketId);
+
       type InsertResult =
         | { id: string; status: "success"; insertedId: string }
         | { id: string; status: "failure"; error: string };
@@ -591,17 +602,19 @@ export function registerDatabaseTools(
           batch.map((doc, batchIndex) => {
             const globalIndex = i + batchIndex;
             const rowId =
-              typeof doc["_id"] === "string" && doc["_id"]
-                ? (doc["_id"] as string)
+              doc[dataKey] !== undefined && doc[dataKey] !== null && doc[dataKey] !== ""
+                ? String(doc[dataKey])
                 : `row:${globalIndex}`;
 
             return client
               .post(`/bucket/${bucketId}/data`, doc)
               .then((inserted) => {
+                const insertedKey = (inserted as Record<string, unknown>)[
+                  dataKey
+                ];
                 const insertedId =
-                  typeof (inserted as Record<string, unknown>)["_id"] ===
-                  "string"
-                    ? ((inserted as Record<string, unknown>)["_id"] as string)
+                  insertedKey !== undefined && insertedKey !== null
+                    ? String(insertedKey)
                     : JSON.stringify(inserted);
                 return {
                   id: rowId,

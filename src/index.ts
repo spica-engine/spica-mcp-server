@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SpicaClient } from "./client";
+import { createKeys, detectEngine } from "./engine";
 import { registerAuthTools } from "./tools/auth";
 import { registerDatabaseTools } from "./tools/database";
 import { registerDevelopmentTools } from "./tools/development";
@@ -39,17 +40,19 @@ const functionInfo = (await client.get(
 )) as FunctionInformation;
 const triggerInfo = buildTriggerSchemas(functionInfo);
 
+const keys = createKeys(await detectEngine(client), client);
+
 const server = new McpServer({
   name: "spica-mcp-server",
   version,
 });
 
-registerAuthTools(server, client);
-registerDatabaseTools(server, client);
-registerDevelopmentTools(server, client, triggerInfo);
-registerDebugTools(server, client);
-registerAuditingTools(server, client);
-registerStorageTools(server, client);
+registerAuthTools(server, client, keys);
+registerDatabaseTools(server, client, keys);
+registerDevelopmentTools(server, client, triggerInfo, keys);
+registerDebugTools(server, client, keys);
+registerAuditingTools(server, client, keys);
+registerStorageTools(server, client, keys);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

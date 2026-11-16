@@ -1,11 +1,9 @@
+import { defaultKeys, type Keys, idFields, requireId } from "../engine";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpicaClient } from "../client";
 import type { StorageObject } from "../types";
-import {
-  StorageObjectOutputSchema,
-  StorageObjectListOutputSchema,
-} from "../schemas/outputs";
+import { buildOutputSchemas } from "../schemas/outputs";
 
 // ── Shared storage object field schema ────────────────────────────────────────────
 const StorageObjectInputBase = z.object({
@@ -19,7 +17,9 @@ const StorageObjectInputBase = z.object({
 export function registerStorageTools(
   server: McpServer,
   client: SpicaClient,
+  keys: Keys = defaultKeys,
 ): void {
+  const out = buildOutputSchemas(keys.systemKey);
   // ── list_storage_objects ──────────────────────────────────────────────
   server.registerTool(
     "list_storage_objects",
@@ -28,7 +28,7 @@ export function registerStorageTools(
       description:
         "Returns storage objects with optional filtering, pagination, and sorting.",
       annotations: { readOnlyHint: true },
-      outputSchema: StorageObjectListOutputSchema,
+      outputSchema: out.StorageObjectListOutputSchema,
       inputSchema: z.object({
         filter: z.string().optional().describe("JSON filter object"),
         paginate: z
@@ -66,16 +66,14 @@ export function registerStorageTools(
         "Creates a new storage object. Content data must be base64-encoded.",
       inputSchema: z
         .object({
-          _id: z
-            .string()
-            .optional()
-            .describe("Optional custom ID. If omitted, MongoDB generates one."),
+          ...idFields(keys, "Record"),
         })
         .merge(StorageObjectInputBase),
     },
-    async ({ _id, name, content }) => {
+    async ({ _id, id, name, content }) => {
+      const recordId = _id ?? id;
       const obj: Record<string, unknown> = { name, content };
-      if (_id !== undefined) obj._id = _id;
+      if (recordId !== undefined) obj[keys.systemKey] = recordId;
       const arr = (await client.post("/storage", [obj])) as StorageObject[];
       const result: StorageObject = Array.isArray(arr) ? arr[0] : arr;
       return {
@@ -93,13 +91,14 @@ export function registerStorageTools(
     {
       title: "Update Storage Object",
       description:
-        "Replaces an existing storage object. _id is required. Content data must be base64-encoded.",
+        `Replaces an existing storage object. ${keys.idRequired} Content data must be base64-encoded.`,
       inputSchema: z
-        .object({ _id: z.string().describe("Storage object ID. Required.") })
+        .object(idFields(keys, "Storage object", true))
         .merge(StorageObjectInputBase),
     },
-    async ({ _id, name, content }) => {
-      const result = (await client.put(`/storage/${_id}`, {
+    async ({ _id, id, name, content }) => {
+      const recordId = requireId(_id, id);
+      const result = (await client.put(`/storage/${recordId}`, {
         name,
         content,
       })) as StorageObject;

@@ -171,6 +171,18 @@ Add to your Cursor MCP settings:
 | `update_storage_object` | Replace an existing storage object                 |
 | `rename_storage_object` | Rename a storage object                            |
 
+## Database engines
+
+The server asks `GET /status/engine` at startup and adapts to the engine:
+
+| | MongoDB (default) | PostgreSQL |
+| --- | --- | --- |
+| System record key | `_id` | `id` |
+| Bucket document key | `_id` | the bucket's `primary` property |
+| Bucket filters | expression or JSON | expression only (e.g. `document.age > 1`) |
+
+Tools accept either `_id` or `id` as input and return records with the engine's native key. If the endpoint is missing or fails, the server assumes MongoDB. On PostgreSQL, buckets need a `primary` that names a property, and the `uuid`, `integer` and `bigint` property types are available.
+
 ## License
 
 ISC
